@@ -48,3 +48,21 @@ cp <path to coreavc-for-linux>/mythtv/dshowcodecs ~/.mythtv
 
 5) Install CoreAVC license info
 <put directions here>
+
+6) Verify that dshowserver is working
+{{{
+dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449
+}}}
+Should return:
+{{{
+shm:/dshow_shm.
+sem1:/dshow_sem1.
+sem2:/dshow_sem2.
+Opening device
+Decoder supports the following YUV formats: YUY2 IYUV YV12 I420
+Decoder is capable of YUV output (flags 0x27)
+Setting fmt
+Starting
+Initialization is complete
+shm_open failed: No such file or directory 
+}}}
