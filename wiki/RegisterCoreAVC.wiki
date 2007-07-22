@@ -22,9 +22,9 @@ HKEY_CURRENT_USER\SOFTWARE\Licenturion GmbH\0000032D\User ID
 
 in linux you install these as (for example):
 {{{
-registercodec -r $HOME/.mplayer/registry32 -k "HKEY_CURRENT_USER\\Microsoft\\Windows\\CurrentVersion\\ProductID' -v "55555-333-7777777-55555"
-registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Serial' -v "111111-222222-333333-444444-55555"
-registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\User' -v "John Doe"
+registercodec -r $HOME/.mplayer/registry32 -k "HKEY_CURRENT_USER\\Microsoft\\Windows\\CurrentVersion\\ProductID" -v "55555-333-7777777-55555"
+registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Serial" -v "111111-222222-333333-444444-55555"
+registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\User" -v "John Doe"
 }}}
 There are other options you can play with too.  The following are all untested as to how they behave in Linux:
 Deinterlacing:
@@ -33,30 +33,30 @@ Deinterlacing:
 1 : Software double frame rate
 2 : DirectShow deinterlacing
 3 : No deinterlacing
-registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deinterlace" -v <value> -t  dword
+registercodec -r ~/.mplayer/.registry32 -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deinterlace" -v <value> -t  dword
 }}}
 Aggressive Deinterlacing:
 {{{
 0 : Off
 1 : On
-registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\AggressiveDeinterlace" -v <value> -t  dword
+registercodec -r ~/.mplayer/.registry32 -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\AggressiveDeinterlace" -v <value> -t  dword
 }}}
 Crop 1088 to 1080:
 {{{
 0 : Off
 1 : On
-registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Crop1080" -v <value> -t  dword
+registercodec -r ~/.mplayer/.registry32 -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Crop1080" -v <value> -t  dword
 }}}
 Deblocking:
 {{{
 0 : Standard deblocking
 1 : Skip b-frame deblocking
 2 : Skip all deblocking
-registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deblocking" -v <value> -t  dword
+registercodec -r ~/.mplayer/.registry32 -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deblocking" -v <value> -t  dword
 }}}
 Force VMR AR Correction:
 {{{
 0 : Off
 1 : On
-registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\ForceVMRAR" -v <value> -t  dword
+registercodec -r ~/.mplayer/.registry32 -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\ForceVMRAR" -v <value> -t  dword
 }}}
