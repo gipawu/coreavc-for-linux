@@ -1,0 +1,62 @@
+#summary Registreing CoreAVC
+
+= Introduction =
+
+Before you can use CoreAVC you must add your license information to the registry.  Unfortunately CoreAVC can not be installed from wine as far as I know.  You will need a real Windows box to install it.
+
+= Details =
+Once CoreAVC has been installed you can likely find the CoreAVCDecoder.ax file in 'C:\Program Files\Core Codec\CoreAVC Professional\CoreAVCDecoder.ax'  You will need to copy this to your linux box in /usr/lib/win32
+
+Next you'll need to open Regedit and find the folloiwng keys:
+For CoreAVC1.2 and 1.3:
+{{{
+HKEY_LOCAL_MACHINE\Microsoft\Windows\CurrentVersion\ProductID
+HKEY_CURRENT_USER\Software\CoreCodec\CoreAVC Pro\Serial
+HKEY_CURRENT_USER\Software\CoreCodec\CoreAVC Pro\User
+}}}
+for CoreAVC 1.0 and 1.1:
+{{{
+HKEY_CURRENT_USER\SOFTWARE\Licenturion GmbH\0000032D\Product Key
+HKEY_CURRENT_USER\SOFTWARE\Licenturion GmbH\0000032D\User ID
+}}}
+
+in linux you install these as (for example):
+{{{
+registercodec -r $HOME/.mplayer/registry32 -k "HKEY_CURRENT_USER\\Microsoft\\Windows\\CurrentVersion\\ProductID' -v "55555-333-7777777-55555"
+registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Serial' -v "111111-222222-333333-444444-55555"
+registercodec -r $HOME/.mplayer/registry32 -k "KEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\User' -v "John Doe"
+}}}
+There are other options you can play with too.  The following are all untested as to how they behave in Linux:
+Deinterlacing:
+{{{
+0 : Software deinterlacing
+1 : Software double frame rate
+2 : DirectShow deinterlacing
+3 : No deinterlacing
+registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deinterlace" -v <value> -t  dword
+}}}
+Aggressive Deinterlacing:
+{{{
+0 : Off
+1 : On
+registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\AggressiveDeinterlace" -v <value> -t  dword
+}}}
+Crop 1088 to 1080:
+{{{
+0 : Off
+1 : On
+registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Crop1080" -v <value> -t  dword
+}}}
+Deblocking:
+{{{
+0 : Standard deblocking
+1 : Skip b-frame deblocking
+2 : Skip all deblocking
+registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\Deblocking" -v <value> -t  dword
+}}}
+Force VMR AR Correction:
+{{{
+0 : Off
+1 : On
+registercodec -r ~/.mplayer/.registry32 -k ""HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC Pro\\ForceVMRAR" -v <value> -t  dword
+}}}
