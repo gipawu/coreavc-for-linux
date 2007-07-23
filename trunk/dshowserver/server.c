@@ -58,6 +58,7 @@ int main(int argc, char *argv[])
   static struct option Long_Options[] = {
     {"bits", 1, 0, 'b'},
     {"codec", 1, 0, 'c'},
+    {"debug", 0, 0, 'd'},
     {"fourcc", 1, 0, 'f'},
     {"guid", 1, 0, 'g'},
     {"id", 1, 0, 'i'},
@@ -82,6 +83,9 @@ int main(int argc, char *argv[])
         break;
       case 'c':
         codec = optarg;
+        break;
+      case 'd':
+        print_verbose_messages = 8;
         break;
       case 's':
         sscanf(optarg,"%dx%d", &width, &height);

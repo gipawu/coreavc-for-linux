@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp	(revision 13823)
-+++ libs/libmythtv/avformatdecoder.cpp	(working copy)
+--- libs/libmythtv/avformatdecoder.cpp.orig	2007-07-12 21:24:14.000000000 -0400
++++ libs/libmythtv/avformatdecoder.cpp	2007-07-12 23:49:55.000000000 -0400
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -19,42 +19,16 @@ Index: libs/libmythtv/avformatdecoder.cpp
  // MythTV headers
  #include "mythconfig.h" // for CONFIG_LIBDTS
  #include "avformatdecoder.h"
-@@ -36,6 +40,7 @@
+@@ -36,6 +40,8 @@
  #include "../libavcodec/parser.h"
  #include "../libmythmpeg2/mpeg2.h"
  #include "ivtv_myth.h"
++#include "../libdshowloader/dshow/DSVD_extern.h"
 +#include "libavformat/riff.h"
  // from libavcodec
  extern const uint8_t *ff_find_start_code(const uint8_t * restrict p, const uint8_t *end, uint32_t * restrict state);
  }
-@@ -79,30 +84,244 @@
- 
- typedef MythDeque<AVFrame*> avframe_q;
- 
-+struct vd_struct {
-+  union {
-+    uint32_t ret;
-+    uint32_t cmd;
-+  };
-+  uint32_t buflen;
-+} __attribute__((__packed__));
-+
-+#include <semaphore.h>
-+#include <sys/mman.h>
-+typedef struct {
-+    int fd;
-+    void *mem;
-+    char *data;
-+    char *picture;
-+    int picsize;
-+    sem_t *sem_rd;
-+    sem_t *sem_wr;
-+    struct vd_struct *vd;
-+} ds_mpi_t;
-+
- /**
-  * Management of libmpeg2 decoding
-  */
+@@ -85,24 +91,161 @@
  class AvFormatDecoderPrivate
  {
    public:
@@ -63,14 +37,14 @@ Index: libs/libmythtv/avformatdecoder.cpp
 -   ~AvFormatDecoderPrivate() { DestroyMPEG2(); }
 +    AvFormatDecoderPrivate(bool allow_libmpeg2, bool allow_directshow)
 +        : mpeg2dec(NULL), allow_mpeg2dec(allow_libmpeg2),
-+          ds_mpi(NULL), allow_dshow(allow_directshow) { ; }
++          dshowdec(NULL), allow_dshow(allow_directshow) { ; }
 +   ~AvFormatDecoderPrivate() { DestroyMPEG2(); DestroyDirectShow();}
      
      bool InitMPEG2();
      bool HasMPEG2Dec() const { return (bool)(mpeg2dec); }
  
 +    bool InitDirectShow(AVCodecContext *enc);
-+    bool HasDirectShow() const { return (bool)(ds_mpi); }
++    bool HasDirectShow() const { return (bool)(dshowdec); }
 +
      void DestroyMPEG2();
      void ResetMPEG2();
@@ -85,26 +59,13 @@ Index: libs/libmythtv/avformatdecoder.cpp
    private:
      mpeg2dec_t *mpeg2dec;
      bool        allow_mpeg2dec;
-+    ds_mpi_t   *ds_mpi;
++    DS_VideoDecoder *dshowdec;
 +    bool        allow_dshow;
      avframe_q   partialFrames;
  };
  
-+static int sem_twait(sem_t *sem, int t) {
-+    struct timespec ts;
-+    clock_gettime(CLOCK_REALTIME, &ts);
-+    ts.tv_sec += t;
-+    return(sem_timedwait(sem, &ts));
-+}
 +bool AvFormatDecoderPrivate::InitDirectShow(AVCodecContext *enc)
 +{
-+    typedef struct {
-+        uint32_t f1;
-+        uint16_t f2;
-+        uint16_t f3;
-+        uint8_t  f4[8];
-+    } GUID;
-+
 +    const struct AVCodecTag *bmp_taglists[] = {codec_bmp_tags, 0};
 +
 +    if(enc->codec_tag == 0)
@@ -125,7 +86,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +    {
 +        bool found = false;
 +        QString codec;
-+        GUID guid = {0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0}};
++        GUID guid;
 +        QString codec_file = QDir::homeDirPath() +
 +                            QString("/.mythtv/dshowcodecs");
 +        if (! QFileInfo(codec_file).isFile()) {
@@ -155,7 +116,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +            {
 +                if ((*it).stripWhiteSpace() == videotype)
 +                {
-+                    guid.f1 = guidlist[0].toUInt(0, 0);
++                    guid.f1 = guidlist[0].toULong(0, 0);
 +                    guid.f2 = guidlist[1].toUShort(0, 0);
 +                    guid.f3 = guidlist[2].toUShort(0, 0);
 +                    for (int i = 0; i < 8; i++)
@@ -168,51 +129,28 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +        }
 +        fh.close();
 +        if (found) {
-+            int ret;
-+            char cmd[255], shm[80], sem1[80], sem2[80];
-+            snprintf(cmd, 255, "dshowserver -c %s -s %dx%d "
-+                     "-g %08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x "
-+                     "-f 0x%08x -b 12 -o 0x30323449 -p %d -i %x %s&",
-+                codec.ascii(), enc->width, enc->height,
-+                guid.f1, guid.f2, guid.f3,
-+                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
-+                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
-+                enc->codec_tag, getpid(), *(int *)pthread_self(),
-+                ((print_verbose_messages & VB_PLAYBACK == VB_PLAYBACK) ?
-+                            "-d" : ""));
-+            ds_mpi = new ds_mpi_t;
-+            snprintf(shm, 80, "/dshow_shm.%x", *(int *)pthread_self());
-+            snprintf(sem1, 80, "/dshow_sem1.%x", *(int *)pthread_self());
-+            snprintf(sem2, 80, "/dshow_sem2.%x", *(int *)pthread_self());
-+            ds_mpi->fd = shm_open(shm, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-+            ds_mpi->picsize =  enc->width * enc->height * 12 / 8;
-+            int memsize = sizeof(struct vd_struct) + enc->width * enc->height +
-+                          ds_mpi->picsize;
-+            ftruncate(ds_mpi->fd, memsize);
-+            ds_mpi->mem = mmap(NULL, memsize, PROT_READ | PROT_WRITE,
-+                               MAP_SHARED, ds_mpi->fd, 0);
-+            if(ds_mpi->mem == MAP_FAILED) {
-+              perror("mmap");
-+              allow_dshow = false;
-+              return false;
++           BITMAPINFOHEADER bih;
++           bih.biSize = sizeof(BITMAPINFOHEADER);
++           bih.biWidth = enc->width;
++           bih.biHeight = enc->height;
++           bih.biPlanes = 1;
++           bih.biBitCount = 24;
++           bih.biCompression = enc->codec_tag;
++           bih.biSizeImage = 0;
++           bih.biXPelsPerMeter=0;
++           bih.biYPelsPerMeter=0;
++           bih.biClrUsed=0;
++           bih.biClrImportant=0;
++           
++           dshowdec = DS_VideoDecoder_Open(codec.ascii(), &guid, &bih, 0, 0);
++           if (! dshowdec) {
++                allow_dshow = false;
++                return false;
 +            }
-+            ds_mpi->vd = (struct vd_struct *)ds_mpi->mem;
-+            ds_mpi->data = ((char *)ds_mpi->mem) + sizeof(struct vd_struct);
-+            ds_mpi->picture = ds_mpi->data + enc->width * enc->height;
-+            //Create read/write semaphores in locked state
-+            ds_mpi->sem_wr = sem_open(sem1, O_CREAT, 0644, 0);
-+            ds_mpi->sem_rd = sem_open(sem2, O_CREAT, 0644, 0);
-+            system(cmd);
-+            ret = sem_twait(ds_mpi->sem_rd, 10);
-+            shm_unlink(shm);
-+            sem_unlink(sem1);
-+            sem_unlink(sem2);
-+            if(ret != 0) {
-+                VERBOSE(VB_IMPORTANT, LOC + "DirectShow filter failed");
-+            } else {
-+                VERBOSE(VB_IMPORTANT, LOC + "Found DirectShow filter");
-+                return true;
-+            }
++            DS_VideoDecoder_SetDestFmt(dshowdec,12,0x30323449); //IMGFMT_I420
++            DS_VideoDecoder_StartInternal(dshowdec);
++            VERBOSE(VB_IMPORTANT, LOC + "Found DirectShow filter");
++            return true;
 +       }
 +    }
 +    allow_dshow = false;
@@ -221,16 +159,11 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +
 +void AvFormatDecoderPrivate::DestroyDirectShow()
 +{
-+    if (ds_mpi)
++    VERBOSE(VB_PLAYBACK, LOC + "Destroying filter");
++    if (dshowdec)
 +    {
-+        VERBOSE(VB_PLAYBACK, LOC + "Destroying filter");
-+        ds_mpi->vd->cmd = 1; //'1' is cmd for terminating
-+        sem_post(ds_mpi->sem_wr);
-+        close(ds_mpi->fd);
-+        sem_close(ds_mpi->sem_wr);
-+        sem_close(ds_mpi->sem_rd);
-+        delete ds_mpi;
-+        ds_mpi = NULL;
++        DS_VideoDecoder_Destroy(dshowdec);
++        dshowdec = NULL;
 +    }
 +}
 +
@@ -244,30 +177,15 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +                                             uint8_t *buf, int buf_size)
 +{
 +    int ret;
-+    ds_mpi->vd->cmd = 2; //'1' is cmd for decoding
-+    memcpy(ds_mpi->data, buf, buf_size);
-+    ds_mpi->vd->buflen = buf_size;
-+    sem_post(ds_mpi->sem_wr);
-+    ret = sem_twait(ds_mpi->sem_rd, 10);
-+    if(ret == 0 && ds_mpi->vd->ret == 0) {
-+        *got_picture_ptr = 1;
-+        avctx->get_buffer(avctx, picture);
-+        if(avctx->height & 0x0f) {
-+           unsigned long pos, pos1, siz = avctx->height * avctx->width;
-+           memcpy(picture->data[0], ds_mpi->picture, siz);
-+           pos = siz;
-+           pos1 = siz + avctx->width * (avctx->height % 16);
-+           siz /= 4;
-+           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
-+           pos+=siz;
-+           pos1+=siz + avctx->width * (avctx->height % 16) / 4;
-+           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
-+        } else {
-+          memcpy(picture->data[0], ds_mpi->picture, ds_mpi->picsize);
-+        }
-+    } else {
-+      *got_picture_ptr = 0;
-+    }
++    int len = buf_size;
++    *got_picture_ptr = 0;
++    avctx->get_buffer(avctx, picture);
++    ret = DS_VideoDecoder_DecodeInternal(dshowdec, buf, len, 0,
++                                         (char *)picture->data[0]);
++    if(ret == 0)
++      *got_picture_ptr = 1;
++    else
++      avctx->release_buffer(avctx, picture);
 +    return buf_size;
 +}
 +
@@ -275,7 +193,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  bool AvFormatDecoderPrivate::InitMPEG2()
  {
      if (!allow_mpeg2dec)
-@@ -267,7 +486,7 @@
+@@ -267,7 +410,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -284,17 +202,17 @@ Index: libs/libmythtv/avformatdecoder.cpp
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
        frame_decoded(0),             decoded_video_frame(NULL),
-@@ -971,7 +1190,8 @@
+@@ -971,7 +1114,8 @@
          uint align_width  = enc->width;
          uint align_height = enc->height;
  
 -        align_dimensions(enc, align_width, align_height);
-+        //if (! d->HasDirectShow())
++        if (! d->HasDirectShow())
 +            align_dimensions(enc, align_width, align_height);
  
          if (align_width == 0 && align_height == 0)
          {
-@@ -1388,6 +1608,7 @@
+@@ -1388,6 +1532,7 @@
                  }
  
                  // Only use libmpeg2 when not using XvMC
@@ -302,7 +220,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                      CODEC_ID_MPEG2VIDEO == enc->codec_id)
                  {
-@@ -3205,7 +3426,21 @@
+@@ -3205,7 +3350,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -327,13 +245,114 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      else
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro	(revision 13823)
-+++ libs/libmythtv/libmythtv.pro	(working copy)
-@@ -32,6 +32,7 @@
- LIBS += -lmyth-$${LIBVERSION} -lmythavutil-$${LIBVERSION}
- LIBS += -lmythavcodec-$${LIBVERSION} -lmythdvdnav-$${LIBVERSION}
- LIBS += -lmythavformat-$${LIBVERSION} -lmythmpeg2-$${LIBVERSION}
-+LIBS += -lrt
- LIBS += $$EXTRA_LIBS
+--- libs/libmythtv/libmythtv.pro.orig	2007-07-12 21:24:14.000000000 -0400
++++ libs/libmythtv/libmythtv.pro	2007-07-12 21:24:48.000000000 -0400
+@@ -27,6 +27,9 @@
+ DEPENDPATH  += ../libmythlivemedia/UsageEnvironment/include
+ DEPENDPATH  += ../libmythlivemedia/UsageEnvironment
  
- isEmpty(QMAKE_EXTENSION_SHLIB) {
++DEPENDPATH  += ../libdshowloader ../libdshowloader/dshow ../libdshowloader/wine
++LIBS        += -L../libdshowloader -lloader
++
+ LIBS += -L../libmyth -L../libavutil -L../libavcodec -L../libavformat 
+ LIBS += -L../libmythmpeg2 -L../libmythdvdnav
+ LIBS += -lmyth-$${LIBVERSION} -lmythavutil-$${LIBVERSION}
+@@ -51,6 +54,7 @@
+ TARGETDEPS += ../libavformat/libmythavformat-$${LIBVERSION}.$${QMAKE_EXTENSION_SHLIB}
+ TARGETDEPS += ../libmythmpeg2/libmythmpeg2-$${LIBVERSION}.$${QMAKE_EXTENSION_LIB}
+ TARGETDEPS += ../libmythdvdnav/libmythdvdnav-$${LIBVERSION}.$${QMAKE_EXTENSION_LIB}
++TARGETDEPS += ../libdshowloader/libloader.$${QMAKE_EXTENSION_LIB}
+ 
+ 
+ DEFINES += _LARGEFILE_SOURCE
+Index: libs/libs.pro
+===================================================================
+--- libs/libs.pro.orig	2007-07-12 21:24:13.000000000 -0400
++++ libs/libs.pro	2007-07-12 21:24:48.000000000 -0400
+@@ -8,7 +8,7 @@
+ # Directories
+ SUBDIRS += libavutil libavcodec libavformat libmythsamplerate 
+ SUBDIRS += libmythsoundtouch libmythmpeg2 libmythdvdnav
++SUBDIRS += libdshowloader
+ SUBDIRS += libmyth libmythtv libmythui libmythfreemheg
+ SUBDIRS += libmythupnp
+ SUBDIRS += libmythlivemedia
+-
+Index: libs/libdshowloader/libdshowloader.pro
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ libs/libdshowloader/libdshowloader.pro	2007-07-12 21:24:48.000000000 -0400
+@@ -0,0 +1,73 @@
++include ( ../../config.mak )
++include ( ../../settings.pro )
++
++TEMPLATE = lib
++TARGET = loader
++CONFIG += thread staticlib warn_off
++CONFIG -= qt
++target.path = $${LIBDIR}
++INSTALLS = target
++
++DEPENDPATH = compat
++INCLUDEPATH = compat
++
++DEFINES += _LARGEFILE_SOURCE __WINE__ NOAVIFILE_HEADERS MPLAYER
++
++# Debug mode on x86 must compile without -fPIC and with -O, 
++# otherwise gcc runs out of registers.
++debug:contains(TARGET_ARCH_X86, yes) {
++    !contains(TARGET_ARCH_X86_64, yes) {
++        QMAKE_CFLAGS_SHLIB = 
++    }
++}
++
++QMAKE_CFLAGS_DEBUG += -O
++
++QMAKE_CLEAN += $(TARGET) $(TARGETA) $(TARGETD) $(TARGET0) $(TARGET1) $(TARGET2)
++
++# Input
++SOURCES += driver.c afl.c vfl.c
++SOURCES += ldt_keeper.c pe_image.c module.c ext.c win32.c
++SOURCES += pe_resource.c resource.c registry.c elfdll.c
++SOURCES += wrapper.S
++SOURCES += compat/compat.c
++SOURCES += dshow/DS_AudioDecoder.c dshow/DS_Filter.c dshow/DS_VideoDecoder.c \
++	dshow/allocator.c dshow/cmediasample.c dshow/guids.c \
++	dshow/inputpin.c dshow/outputpin.c dshow/mediatype.c osdep/mmap_anon.c
++
++INCLUDEPATH += dshow
++
++
++contains( TARGET_ARCH_ALPHA, yes ) {
++    QMAKE_CFLAGS_RELEASE += -fforce-addr -freduce-all-givs
++}
++
++contains( TARGET_ALTIVEC, yes ) {
++  macx {
++    QMAKE_CFLAGS_RELEASE += -faltivec
++    QMAKE_CFLAGS_DEBUG   += -faltivec
++  }
++  !macx {
++    QMAKE_CFLAGS_RELEASE += -maltivec -mabi=altivec
++  }
++}
++
++macx {
++    LIBS               += -lz
++    QMAKE_LFLAGS_SHLIB += -single_module
++    QMAKE_LFLAGS_SHLIB += -seg1addr 0xC2000000
++}
++
++# omit-frame-pointer doesn't play nice iwth win32 code
++QMAKE_CFLAGS_RELEASE -= -fomit-frame-pointer
++QMAKE_CFLAGS_DEBUG   -= -fomit-frame-pointer
++
++registercodec.depends += modify_reg.c registry.c
++registercodec.commands += $(CC) -I. -Icompat -o registercodec modify_reg.c
++QMAKE_EXTRA_UNIX_TARGETS += registercodec
++POST_TARGETDEPS += registercodec
++
++mrcinstall.path=$${PREFIX}/bin
++mrcinstall.files=registercodec
++INSTALLS += mrcinstall
++QMAKE_CLEAN += registercodec
