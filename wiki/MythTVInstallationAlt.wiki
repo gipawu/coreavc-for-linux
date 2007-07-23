@@ -26,4 +26,4 @@ make install
 }}}
 4) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
 
-5) Install CoreAVC license info as documented in RegisterCoreAVC
+5) Install CoreAVC license info as documented in [RegisterCoreAVC]
