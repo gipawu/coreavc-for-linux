@@ -19,14 +19,11 @@ cd coreavc-for-linux
   * Choose one of the following options:
     # Build from source (ia32 only)
 {{{
-cd dshowserver
-make
-cd ..
+make -C dshowserver
 }}}
     # Download static binaries (for x86_64)
       download the latest binary from [http://code.google.com/p/coreavc-for-linux/downloads/list here], then:
 {{{
-cd dshowserver
 tar -xjf <path to dshowserver-ia32-rxxx.tar.bz2
 }}}
   * Once you have the necessary binaries, do:
