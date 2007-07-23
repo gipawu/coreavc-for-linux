@@ -43,8 +43,7 @@ cp <path to coreavc-for-linux>/mythtv/dshowcodecs ~/.mythtv
 
 4) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
 
-5) Install CoreAVC license info
-<put directions here>
+5) Install CoreAVC license info as documented in [RegisterCoreAVC]
 
 6) Verify that dshowserver is working
 {{{
