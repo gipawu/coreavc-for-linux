@@ -1,6 +1,6 @@
 /* 
  *  Copyright	1994	Eric Youndale & Erik Bos
- *  Copyright	1995	Martin von Löwis
+ *  Copyright	1995	Martin von LÃ¶wis
  *  Copyright   1996-98 Marcus Meissner
  *
  *	based on Eric Youndale's pe-test and:
@@ -11,7 +11,7 @@
  *
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: pe_image.c 21277 2006-11-26 18:33:41Z diego $
+ * $Id: pe_image.c 23754 2007-07-09 19:50:36Z diego $
  *
  */
 /* Notes:
