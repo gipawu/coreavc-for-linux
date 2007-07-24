@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
   int bits, ppid;
 
   while(1) {
-    c = getopt_long(argc, argv, "b:c:f:g:i:o:p:s:", Long_Options, &opt);
+    c = getopt_long(argc, argv, "b:c:df:g:i:o:p:s:", Long_Options, &opt);
     if (c == EOF)
       break;
     switch (c) {
