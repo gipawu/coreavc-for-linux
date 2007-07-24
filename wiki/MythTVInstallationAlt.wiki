@@ -19,7 +19,7 @@ cd coreavc-for-linux
 
 3) Install patch into MythTV:
 {{{
-cd <path to mythsrc>
+cd <path to mythtv source code>
 patch -p0 < <path to coreavc-for-linux>/mythtv/libdshowloader.patch
 make
 make install
