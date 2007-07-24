@@ -3,6 +3,7 @@
 #include "registry.c"
 
 int print_verbose_messages = 0;
+char *get_path ( const char *file ) {return NULL;}
 
 static void remove_key(long handle, const char* name) {
     int i;
