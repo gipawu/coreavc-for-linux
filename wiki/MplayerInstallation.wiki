@@ -52,3 +52,9 @@ videocodec coreavc13
 5) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
 
 6) Install CoreAVC license info as documented in [RegisterCoreAVC]
+
+= Playing tips =
+
+to use coreavc, you may need to add '-vc coreavc13' (assuming you use the above codecs.conf options)
+
+you may also need to use '-demuxer lavf' for some formats (TS streams for example)
