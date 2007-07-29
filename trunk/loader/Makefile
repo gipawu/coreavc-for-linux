@@ -23,8 +23,8 @@ CFLAGS+=-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
 
 all: $(LIBNAME_COMMON) registercodec
 
-registercodec: modify_reg.c registry.c compat/compat.o
-	$(CC) $(CFLAGS) -o $@ -static $< compat/compat.o
+registercodec: modify_reg.c registry.c
+	$(CC) $(CFLAGS) -o $@ -static $<
 
 $(LIBNAME_COMMON):   $(OBJS_COMMON)
 	ar r $@ $^
