@@ -6,7 +6,7 @@ The mplayer build does not support x86_64 and does not support interlaced playba
 
 = Details =
 
-Before beginning, ensure that you have a recent mplayer build and have run './configure' on it.  This is important as the patch will not apply cleanly to an unconfigured mplayer.
+Before beginning, ensure that you have a recent mplayer build (only SVN is supported, but recent snapshots should work as well.  1.0RC1 apparently does not) and have run './configure' on it.  This is important as the patch will not apply cleanly to an unconfigured mplayer.
 
 1) Download the code from svn:
 {{{
