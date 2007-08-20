@@ -440,7 +440,14 @@ static HRESULT STDCALL COutputPin_QueryId(IPin * This,
 static HRESULT STDCALL COutputPin_QueryAccept(IPin * This,
 					      /* [in] */ const AM_MEDIA_TYPE *pmt)
 {
-    return output_unimplemented("COutputPin_QueryAccept", This);
+    output_unimplemented("COutputPin_QueryAccept", This);
+    if(memcmp(&pmt->formattype, &FORMAT_VideoInfo, sizeof(GUID))) {
+      return S_OK;
+    }
+    if(memcmp(&pmt->formattype, &FORMAT_VideoInfo2, sizeof(GUID))) {
+      return S_OK;
+    }
+    return S_FALSE;
 }
 
 /**

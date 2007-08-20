@@ -8,6 +8,7 @@
 #include "DS_Filter.h"
 #include "driver.h"
 #include "com.h"
+#include "wine/winerror.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -98,8 +99,17 @@ void DS_Filter_Destroy(DS_Filter* This)
 static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSample){
     char* pointer;
     int len;
+    AM_MEDIA_TYPE *mt;
+ 
     SampleProcUserData* pData=(SampleProcUserData*)pUserData;
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
+    if(pSample->vt->GetMediaType &&
+       pSample->vt->GetMediaType(pSample, &mt) == S_OK) {
+      if(memcmp(&mt->formattype, &FORMAT_VideoInfo2, sizeof(GUID)) == 0) {
+	pData->interlace = ((VIDEOINFOHEADER2 *)(mt->pbFormat))->dwInterlaceFlags;
+      }
+    }
+
     if (pSample->vt->GetPointer(pSample, (BYTE**) &pointer))
 	return 1;
     len = pSample->vt->GetActualDataLength(pSample);
@@ -119,6 +129,36 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     fclose(file);
 */
     return 0;
+}
+
+void GetProductVersion(HMODULE hMod)
+{
+    HANDLE r;
+    char *res;
+    int len, i;
+    r = FindResourceA(hMod, 1, 16); //VS_VERSION_INFO, RT_VERSION
+    res = (char *)LoadResource(hMod, r);
+    len = SizeofResource(hMod, r);
+    printf("len: %d\n", len);
+    for(i = 0; i < len-50; i ++) {
+      if(res[i]=='P'   && res[i+2]=='r' && res[i+4]=='o' && res[i+6]=='d' &&
+        res[i+8]=='u'  && res[i+10]=='c' && res[i+12]=='t' && res[i+14]=='V' &&
+        res[i+16]=='e' && res[i+18]=='r' && res[i+20]=='s' && res[i+22]=='i' &&
+        res[i+24]=='o' && res[i+26]=='n' && res[i+28]==0) {
+        int v1, v2 = 0, v3 = 0, v4 = 0;
+        v1 = res[i+30] - '0';
+	if(res[i+34] != ' ')
+          v2 = (res[i+34] - '0') << 8;
+        v2 += (res[i+36] - '0');
+	if(res[i+40] != ' ')
+          v3 = (res[i+40] - '0') << 8;
+        v3 += (res[i+42] - '0');
+	if(res[i+46] != ' ')
+          v4 = (res[i+46] - '0') << 8;
+        v4 += (res[i+48] - '0');
+        printf("ProductVersion: %d.%d.%d.%d\n", v1, v2, v3, v4);
+      }
+    }
 }
 
 DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
@@ -177,6 +217,7 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
 	    em = "could not open DirectShow DLL";
 	    break;
 	}
+        GetProductVersion(This->m_iHandle);
 	func = (GETCLASS)GetProcAddress((unsigned)This->m_iHandle, "DllGetClassObject");
 	if (!func)
 	{

@@ -40,6 +40,22 @@ typedef struct __attribute__((__packed__)) tagVIDEOINFOHEADER
     //int               reserved[3];
 } VIDEOINFOHEADER;
 
+typedef struct __attribute__((__packed__)) tagVIDEOINFOHEADER2
+{
+    RECT32            rcSource;
+    RECT32            rcTarget;
+    unsigned long     dwBitRate;
+    unsigned long     dwBitErrorRate;
+    REFERENCE_TIME    AvgTimePerFrame;
+    unsigned long     dwInterlaceFlags;
+    unsigned long     dwCopyProtectFlags;
+    unsigned long     dwPictAspectRatioX; 
+    unsigned long     dwPictAspectRatioY; 
+    unsigned long     dwControlFlags;
+    unsigned long     dwReserved2;
+    BITMAPINFOHEADER    bmiHeader;
+} VIDEOINFOHEADER2;
+
 typedef GUID CLSID;
 typedef GUID IID;
 
@@ -58,6 +74,7 @@ extern const GUID CLSID_MemoryAllocator;
 extern const GUID MEDIATYPE_Video;
 extern const GUID GUID_NULL;
 extern const GUID FORMAT_VideoInfo;
+extern const GUID FORMAT_VideoInfo2;
 extern const GUID FORMAT_MPEG2Video;
 extern const GUID MEDIASUBTYPE_RGB1;
 extern const GUID MEDIASUBTYPE_RGB4;

@@ -12,6 +12,7 @@ typedef struct {
     char* frame_pointer;
     long frame_size;
     int  updated;
+    unsigned long interlace;
 } SampleProcUserData;
 
 /**

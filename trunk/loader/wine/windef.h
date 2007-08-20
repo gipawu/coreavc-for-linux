@@ -609,10 +609,10 @@ typedef struct tagPOINTS
 /* The RECT structure */
 typedef struct tagRECT
 {
-    short  left;
-    short  top;
-    short  right;
-    short  bottom;
+    LONG left;
+    LONG top;
+    LONG right;
+    LONG bottom;
 } RECT, *PRECT, *LPRECT;
 typedef const RECT *LPCRECT;
 

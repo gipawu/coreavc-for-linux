@@ -25,5 +25,4 @@ int DS_VideoDecoder_GetValue(DS_VideoDecoder *this, const char* name, int* value
 int DS_VideoDecoder_SetValue(DS_VideoDecoder *this, const char* name, int value);
 int DS_SetAttr_DivX(char* attribute, int value);
 
-
 #endif /* AVIFILE_DS_VIDEODECODER_H */
