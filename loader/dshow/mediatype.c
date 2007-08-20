@@ -123,7 +123,7 @@ void FreeMediaType(AM_MEDIA_TYPE * pMediaType)
     }
     if (pMediaType->pUnk)
     {
-        //pMediaType->pUnk->vt->Release(pMediaType->pUnk);
+        pMediaType->pUnk->vt->Release(pMediaType->pUnk);
         pMediaType->pUnk = NULL;
     }
 }

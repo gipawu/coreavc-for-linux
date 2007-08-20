@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp	(revision 13823)
-+++ libs/libmythtv/avformatdecoder.cpp	(working copy)
+--- libs/libmythtv/avformatdecoder.cpp.orig	2007-08-18 18:23:55.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2007-08-19 19:14:32.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -27,7 +27,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  // from libavcodec
  extern const uint8_t *ff_find_start_code(const uint8_t * restrict p, const uint8_t *end, uint32_t * restrict state);
  }
-@@ -79,30 +84,244 @@
+@@ -79,30 +84,289 @@
  
  typedef MythDeque<AVFrame*> avframe_q;
  
@@ -170,14 +170,18 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +        if (found) {
 +            int ret;
 +            char cmd[255], shm[80], sem1[80], sem2[80];
++            uint32_t out_fmt;
++            int bpp;
++            //out_fmt = 0x30323449; bpp = 12; //I420 12bpp 
++            out_fmt = 0x32595559; bpp = 16; //YUY2 16bpp 
 +            snprintf(cmd, 255, "dshowserver -c %s -s %dx%d "
 +                     "-g %08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x "
-+                     "-f 0x%08x -b 12 -o 0x30323449 -p %d -i %x %s&",
++                     "-f 0x%08x -b %d -o 0x%08x -p %d -i %x %s&",
 +                codec.ascii(), enc->width, enc->height,
 +                guid.f1, guid.f2, guid.f3,
 +                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
 +                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
-+                enc->codec_tag, getpid(), *(int *)pthread_self(),
++                enc->codec_tag, bpp, out_fmt, getpid(), *(int *)pthread_self(),
 +                ((print_verbose_messages & VB_PLAYBACK == VB_PLAYBACK) ?
 +                            "-d" : ""));
 +            ds_mpi = new ds_mpi_t;
@@ -185,9 +189,12 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +            snprintf(sem1, 80, "/dshow_sem1.%x", *(int *)pthread_self());
 +            snprintf(sem2, 80, "/dshow_sem2.%x", *(int *)pthread_self());
 +            ds_mpi->fd = shm_open(shm, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-+            ds_mpi->picsize =  enc->width * enc->height * 12 / 8;
++            ds_mpi->picsize =  enc->width * enc->height * bpp / 8;
++            int extra = 0;
++            if (enc->height % 16)
++                extra = (16 - enc->height % 16) * bpp / 8;
 +            int memsize = sizeof(struct vd_struct) + enc->width * enc->height +
-+                          ds_mpi->picsize;
++                          ds_mpi->picsize + extra;
 +            ftruncate(ds_mpi->fd, memsize);
 +            ds_mpi->mem = mmap(NULL, memsize, PROT_READ | PROT_WRITE,
 +                               MAP_SHARED, ds_mpi->fd, 0);
@@ -196,6 +203,9 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +              allow_dshow = false;
 +              return false;
 +            }
++
++            if (extra)
++                memset((char *)ds_mpi->mem + (memsize - extra), 0, extra);
 +            ds_mpi->vd = (struct vd_struct *)ds_mpi->mem;
 +            ds_mpi->data = ((char *)ds_mpi->mem) + sizeof(struct vd_struct);
 +            ds_mpi->picture = ds_mpi->data + enc->width * enc->height;
@@ -238,6 +248,31 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +{
 +}
 +
++void yuy2i420(AVFrame *dst, char *src, int w, int l)
++{
++    int count;
++  uint8_t *y, *u, *v;
++  y = dst->data[0];
++  u = dst->data[1];
++  v = dst->data[2];
++  int i,j;
++  for(i=0; i < l; i++) {
++    for(j=0; j < w; j+=2) {
++      *(y++) = *(src++);
++      *(u++) = *(src++);
++      *(y++) = *(src++);
++      *(v++) = *(src++);
++    }
++    i++;
++    for(j=0; j < w; j+=2) {
++      *(y++) = *src;
++      src+=2;
++      *(y++) = *src;
++      src+=2;
++    }
++  }
++}
++
 +int AvFormatDecoderPrivate::DecodeDirectShowVideo(AVCodecContext *avctx,
 +                                             AVFrame *picture,
 +                                             int *got_picture_ptr,
@@ -249,22 +284,32 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +    ds_mpi->vd->buflen = buf_size;
 +    sem_post(ds_mpi->sem_wr);
 +    ret = sem_twait(ds_mpi->sem_rd, 10);
-+    if(ret == 0 && ds_mpi->vd->ret == 0) {
++    if(ret == 0 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
 +        *got_picture_ptr = 1;
++        picture->interlaced_frame = (ds_mpi->vd->ret & 10) ? true : false;
 +        avctx->get_buffer(avctx, picture);
++#if 0  //Using YV12
 +        if(avctx->height & 0x0f) {
 +           unsigned long pos, pos1, siz = avctx->height * avctx->width;
 +           memcpy(picture->data[0], ds_mpi->picture, siz);
 +           pos = siz;
-+           pos1 = siz + avctx->width * (avctx->height % 16);
++           pos1 = siz + avctx->width * (16 - avctx->height % 16);
 +           siz /= 4;
 +           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
 +           pos+=siz;
-+           pos1+=siz + avctx->width * (avctx->height % 16) / 4;
++           pos1+=siz + avctx->width * ( 16 - avctx->height % 16) / 4;
 +           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
 +        } else {
 +          memcpy(picture->data[0], ds_mpi->picture, ds_mpi->picsize);
 +        }
++#else //Using YUY2
++        //YUY2 is a packed format so padding is easier
++        int extra = 0;
++        if(avctx->height % 16)
++            extra = (16 - avctx->height % 16);
++        yuy2i420(picture, ds_mpi->picture,
++                 avctx->width, (avctx->height + extra));
++#endif
 +    } else {
 +      *got_picture_ptr = 0;
 +    }
@@ -275,7 +320,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  bool AvFormatDecoderPrivate::InitMPEG2()
  {
      if (!allow_mpeg2dec)
-@@ -267,7 +486,7 @@
+@@ -267,7 +531,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -284,7 +329,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
        frame_decoded(0),             decoded_video_frame(NULL),
-@@ -971,7 +1190,8 @@
+@@ -971,7 +1235,8 @@
          uint align_width  = enc->width;
          uint align_height = enc->height;
  
@@ -294,7 +339,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  
          if (align_width == 0 && align_height == 0)
          {
-@@ -1388,6 +1608,7 @@
+@@ -1388,6 +1653,7 @@
                  }
  
                  // Only use libmpeg2 when not using XvMC
@@ -302,7 +347,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                      CODEC_ID_MPEG2VIDEO == enc->codec_id)
                  {
-@@ -3205,7 +3426,21 @@
+@@ -3205,7 +3471,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -327,8 +372,8 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      else
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro	(revision 13823)
-+++ libs/libmythtv/libmythtv.pro	(working copy)
+--- libs/libmythtv/libmythtv.pro.orig	2007-08-18 18:23:55.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2007-08-18 18:24:24.000000000 -0700
 @@ -32,6 +32,7 @@
  LIBS += -lmyth-$${LIBVERSION} -lmythavutil-$${LIBVERSION}
  LIBS += -lmythavcodec-$${LIBVERSION} -lmythdvdnav-$${LIBVERSION}

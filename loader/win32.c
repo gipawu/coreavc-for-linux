@@ -1951,7 +1951,7 @@ static long WINAPI expRegQueryValueExW(long key, const char* value, int* reserve
     result=RegQueryValueExA(key, dest, reserved, type, (int *)data1, count);
     dbgprintf("RegQueryValueExW(key 0x%x, value %s, reserved 0x%x, data 0x%x, count 0x%x)"
 	      " => 0x%x\n", key, dest, reserved, data, count, result);
-    if(data && count)dbgprintf("  read %d bytes: '%s' 0x%04x\n", *count, data1,*(unsigned int *)data1);
+    if(data && count)dbgprintf("  read %d bytes: '%s'\n", *count, data1);
     MultiByteToWideChar(65001, 0x0, data1, -1, data, 256);
     return result;
 }
@@ -1960,7 +1960,7 @@ static long WINAPI expRegQueryValueExA(long key, const char* value, int* reserve
     long result=RegQueryValueExA(key, value, reserved, type, data, count);
     dbgprintf("RegQueryValueExA(key 0x%x, value %s, reserved 0x%x, data 0x%x, count 0x%x)"
 	      " => 0x%x\n", key, value, reserved, data, count, result);
-    if(data && count)dbgprintf("  read %d bytes: '%s' 0x%04x\n", *count, data, *(unsigned int *)data);
+    if(data && count)dbgprintf("  read %d bytes: '%s'\n", *count, data);
     return result;
 }
 
@@ -3291,10 +3291,13 @@ static int WINAPI expSetEnvironmentVariableA(const char *name, const char *value
 
 static void* WINAPI expCoTaskMemAlloc(ULONG cb)
 {
-    return my_mreq(cb, 0);
+    void *ret = my_mreq(cb, 0);
+    dbgprintf("CoTaskMemAlloc(%u) => %08x\n", cb, ret);
+    return ret;
 }
 static void WINAPI expCoTaskMemFree(void* cb)
 {
+    dbgprintf("CoTaskMemFree(%08x)\n", cb);
     my_release(cb);
 }
 

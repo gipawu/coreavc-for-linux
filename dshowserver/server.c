@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
         codec = optarg;
         break;
       case 'd':
-        print_verbose_messages = 8;
+        //print_verbose_messages = 8;
         break;
       case 's':
         sscanf(optarg,"%dx%d", &width, &height);
@@ -188,12 +188,12 @@ int main(int argc, char *argv[])
         exit(0);
       case VD_DECODE:
         vd->ret = DS_VideoDecoder_DecodeInternal(dshowdec, buffer, vd->buflen, 0, picture);
+        ret = vd->ret;
         break;
       default:
         fprintf(stderr, "Got illegal command %d\n", vd->cmd);
-        vd->ret = -1;
+        ret = -1;
     }
-    ret = vd->ret;
     sem_post(sem_wr);
     if(ret == -1) {
       exit(1);
