@@ -1,0 +1,2803 @@
+diff -r 28563835c714 src/demuxers/demux_mpeg.c
+--- a/src/demuxers/demux_mpeg.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/demuxers/demux_mpeg.c	Wed Apr 25 14:31:55 2007 +0200
+@@ -538,6 +538,74 @@ static void parse_mpeg2_packet (demux_mp
+       this->video_fifo->put (this->video_fifo, buf);
+     }
+ 
++  } else if (stream_id == 0xfd) {
++      
++    w = read_bytes(this, 1);
++    flags = read_bytes(this, 1);
++    header_len = read_bytes(this, 1);
++
++    len -= header_len + 3;
++
++    pts = 0;
++    dts = 0;
++
++    if ((flags & 0x80) == 0x80) {
++
++      w = read_bytes(this, 1);
++      pts = (int64_t)(w & 0x0e) << 29 ;
++      w = read_bytes(this, 2);
++      pts |= (w & 0xFFFE) << 14;
++      w = read_bytes(this, 2);
++      pts |= (w & 0xFFFE) >> 1;
++
++      header_len -= 5 ;
++    }
++    
++    if ((flags & 0x40) == 0x40) {
++    
++      w = read_bytes(this, 1);
++      dts = (int64_t)(w & 0x0e) << 29 ;
++      w = read_bytes(this, 2);
++      dts |= (w & 0xFFFE) << 14;
++      w = read_bytes(this, 2);
++      dts |= (w & 0xFFFE) >> 1;
++      
++      header_len -= 5 ;
++    } 
++
++    /* read rest of header */
++    i = this->input->read (this->input, this->dummy_space, header_len);
++
++    /* contents */
++
++    for (i = len; i > 0; i -= this->video_fifo->buffer_pool_buf_size) {
++      buf = this->input->read_block (this->input, this->video_fifo,
++    (i > this->video_fifo->buffer_pool_buf_size) ? this->video_fifo->buffer_pool_buf_size : i);
++
++      if (buf == NULL) {
++    this->status = DEMUX_FINISHED;
++    return;
++      }
++
++      buf->type = BUF_VIDEO_VC1;
++      buf->pts  = pts;
++      buf->decoder_info[0] = pts - dts;
++      check_newpts( this, pts, PTS_VIDEO );
++      pts = 0;
++
++      if (this->preview_mode)
++    buf->decoder_flags = BUF_FLAG_PREVIEW;
++
++      if( this->input->get_length (this->input) )
++        buf->extra_info->input_normpos = 
++      (int)( ((int64_t)this->input->get_current_pos (this->input) * 
++          65535) / this->input->get_length (this->input) );
++      if (this->rate)
++        buf->extra_info->input_time = (int)((int64_t)this->input->get_current_pos (this->input)
++                                              * 1000 / (this->rate * 50));
++
++      this->video_fifo->put (this->video_fifo, buf);
++    }
+   } else {
+ 
+     for (i = len; i > 0; i -= 10000) 
+diff -r 28563835c714 src/demuxers/demux_qt.c
+--- a/src/demuxers/demux_qt.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/demuxers/demux_qt.c	Wed Apr 18 14:23:12 2007 +0200
+@@ -2652,13 +2652,6 @@ static void demux_qt_send_headers(demux_
+   /* send init info to decoders */
+   if (video_trak &&
+       (video_trak->properties->video.codec_buftype)) {
+-    buf = this->video_fifo->buffer_pool_alloc (this->video_fifo);
+-    buf->decoder_flags = BUF_FLAG_HEADER|BUF_FLAG_STDHEADER|BUF_FLAG_FRAME_END;
+-    
+-    memcpy(buf->content, &this->bih, sizeof(this->bih));
+-    buf->size = sizeof(this->bih);
+-    buf->type = video_trak->properties->video.codec_buftype;
+-    this->video_fifo->put (this->video_fifo, buf);
+       
+     /* send header info to decoder. some mpeg4 streams need this */
+     if( video_trak->decoder_config ) {
+@@ -2678,6 +2671,14 @@ static void demux_qt_send_headers(demux_
+ 
+       this->video_fifo->put (this->video_fifo, buf);
+     }
++    
++    buf = this->video_fifo->buffer_pool_alloc (this->video_fifo);
++    buf->decoder_flags = BUF_FLAG_HEADER|BUF_FLAG_STDHEADER|BUF_FLAG_FRAME_END;
++    
++    memcpy(buf->content, &this->bih, sizeof(this->bih));
++    buf->size = sizeof(this->bih);
++    buf->type = video_trak->properties->video.codec_buftype;
++    this->video_fifo->put (this->video_fifo, buf);
+ 
+     /* send off the palette, if there is one */
+     if (video_trak->properties->video.palette_count) {
+diff -r 28563835c714 src/demuxers/demux_ts.c
+--- a/src/demuxers/demux_ts.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/demuxers/demux_ts.c	Wed Apr 18 11:38:28 2007 +0200
+@@ -250,6 +250,8 @@ typedef struct {
+   int64_t          packet_count;
+   int              corrupted_pes;
+   uint32_t         buffered_bytes;
++  
++  unsigned int     sent_headers;
+ 
+ } demux_ts_media;
+ 
+@@ -890,6 +892,43 @@ static void demux_ts_buffer_pes(demux_ts
+         m->buf->decoder_info[1] = BUF_SPECIAL_SPU_DVD_SUBTYPE;
+         m->buf->decoder_info[2] = SPU_DVD_SUBTYPE_PACKAGE;
+       }
++      
++      /* hack for win32 codecs, because w32codec.c always
++         waits for BUF_FLAG_FRAME_END before passing to the decoder.
++         At least for coreavc this is not necessary, because it does
++         depacketizing itself */
++      if(m->buf->type == BUF_VIDEO_H264) {
++        m->buf->decoder_flags |= BUF_FLAG_FRAME_END;
++        if(!m->sent_headers) {
++          /* HACK FOR COREAVC */
++          printf("INIT H264\n");
++          xine_bmiheader       bih;
++          buf_element_t *buf = this->video_fifo->buffer_pool_alloc (this->video_fifo);
++          buf->decoder_flags = BUF_FLAG_STDHEADER;
++
++          memset(&bih, 0x00, sizeof(bih));
++          bih.biWidth = 1920;
++          bih.biHeight = 1080;
++          bih.biPlanes = 1;
++          bih.biBitCount = 24;
++          bih.biCompression = 0x34363248; //31435641; //AVC1
++          bih.biSizeImage = 0;
++          bih.biXPelsPerMeter=10000;
++          bih.biYPelsPerMeter=10000;
++          bih.biClrUsed=0;
++          bih.biClrImportant=0;
++          bih.biSize = sizeof(bih);
++          buf->content = malloc(sizeof(bih));
++          memcpy(buf->content, &bih, sizeof(bih));
++          //memcpy(buf->content, &bih, sizeof(bih));
++          buf->size = sizeof(bih);
++          buf->type = BUF_VIDEO_H264;
++          this->video_fifo->put (this->video_fifo, buf);
++          buf = NULL;
++          m->sent_headers = 1;
++        }
++      }
++
+       m->buf->pts = m->pts;
+       m->buf->decoder_info[0] = 1;
+       
+@@ -917,6 +956,13 @@ static void demux_ts_buffer_pes(demux_ts
+ 	      "demux_ts: PID 0x%.4x: corrupted pes encountered\n", m->pid);
+ 
+     } else {
++        
++      if(m->corrupted_pes) {
++        buf_element_t *buf = this->video_fifo->buffer_pool_alloc(this->video_fifo);
++        buf->type = BUF_VIDEO_H264;
++        buf->pts = 0;
++        this->video_fifo->put(this->video_fifo, buf);
++      }
+ 
+       m->corrupted_pes = 0;
+       memcpy(m->buf->mem, ts+len-m->size, m->size);
+@@ -973,6 +1019,7 @@ static void demux_ts_pes_new(demux_ts_t*
+   m->descriptor_tag = descriptor;
+   m->corrupted_pes = 1;
+   m->buffered_bytes = 0;
++  m->sent_headers = 0;
+ }
+ 
+ 
+diff -r 28563835c714 src/libw32dll/DirectShow/DS_AudioDecoder.c
+--- a/src/libw32dll/DirectShow/DS_AudioDecoder.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/DS_AudioDecoder.c	Sat Jun 30 14:23:16 2007 +0200
+@@ -32,6 +32,8 @@ struct _DS_AudioDecoder
+ #define __MODULE__ "DirectShow audio decoder"
+ 
+ typedef long STDCALL (*GETCLASS) (GUID*, GUID*, void**);
++
++static SampleProcUserData sampleProcData;
+ 
+ DS_AudioDecoder * DS_AudioDecoder_Open(char* dllname, GUID* guid, WAVEFORMATEX* wf)
+ //DS_AudioDecoder * DS_AudioDecoder_Create(const CodecInfo * info, const WAVEFORMATEX* wf)
+@@ -98,7 +100,7 @@ print_wave_header(this->m_sVhdr2);
+     /*try*/
+     {
+         ALLOCATOR_PROPERTIES props, props1;
+-        this->m_pDS_Filter = DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType);
++        this->m_pDS_Filter = this->m_pDS_Filter = DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType,&sampleProcData);
+ 	if( !this->m_pDS_Filter ) {
+            free(this->m_sVhdr);
+            free(this->m_sVhdr2);
+@@ -152,15 +154,10 @@ int DS_AudioDecoder_Convert(DS_AudioDeco
+     in_size -= in_size%this->in_fmt.nBlockAlign;
+     while (in_size>0)
+     {
+-	unsigned int frame_size = 0;
+-	char* frame_pointer;
+ 	IMediaSample* sample=0;
+ 	char* ptr;
+ 	int result;
+ 	
+-//	this->m_pOurOutput->SetFramePointer(out_data+written);
+-	this->m_pDS_Filter->m_pOurOutput->SetFramePointer(this->m_pDS_Filter->m_pOurOutput,&frame_pointer);
+-	this->m_pDS_Filter->m_pOurOutput->SetFrameSizePointer(this->m_pDS_Filter->m_pOurOutput,(long*)&frame_size);
+ 	this->m_pDS_Filter->m_pAll->vt->GetBuffer(this->m_pDS_Filter->m_pAll, &sample, 0, 0, 0);
+ 	if (!sample)
+ 	{
+@@ -175,15 +172,15 @@ int DS_AudioDecoder_Convert(DS_AudioDeco
+ 	result = this->m_pDS_Filter->m_pImp->vt->Receive(this->m_pDS_Filter->m_pImp, sample);
+         if (result)
+ 	    Debug printf("DS_AudioDecoder::Convert() Error: putting data into input pin %x\n", result);
+-	if ((written + frame_size) > out_size)
++    if ((written + sampleProcData.frame_size) > out_size)
+ 	{
+ 	    sample->vt->Release((IUnknown*)sample);
+ 	    break;
+ 	}
+-	memcpy((uint8_t*)out_data + written, frame_pointer, frame_size);
++    memcpy((uint8_t*)out_data + written, sampleProcData.frame_pointer, sampleProcData.frame_size);
+         sample->vt->Release((IUnknown*)sample);
+ 	read+=this->in_fmt.nBlockAlign;
+-	written+=frame_size;
++    written+=sampleProcData.frame_size;
+ 	break;
+     }
+     if (size_read)
+diff -r 28563835c714 src/libw32dll/DirectShow/DS_Filter.c
+--- a/src/libw32dll/DirectShow/DS_Filter.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/DS_Filter.c	Sat Jun 30 14:23:16 2007 +0200
+@@ -80,9 +80,35 @@ void DS_Filter_Destroy(DS_Filter* This)
+     CodecRelease();
+ }
+ 
++static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSample){
++    char* pointer;
++    int len;
++    SampleProcUserData* pData=(SampleProcUserData*)pUserData;
++    Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
++    if (pSample->vt->GetPointer(pSample, (BYTE**) &pointer))
++        return 1;
++    len = pSample->vt->GetActualDataLength(pSample);
++    if (len == 0)
++        len = pSample->vt->GetSize(pSample);//for iv50
++    
++    pData->frame_pointer = pointer;
++    pData->frame_size = len;
++    pData->new_frame = 1;
++    /*
++    FILE* file=fopen("./uncompr.bmp", "wb");
++    char head[14]={0x42, 0x4D, 0x36, 0x10, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00};
++    *(int*)(&head[2])=len+0x36;
++    fwrite(head, 14, 1, file);
++    fwrite(&((VIDEOINFOHEADER*)me.type.pbFormat)->bmiHeader, sizeof(BITMAPINFOHEADER), 1, file);
++    fwrite(pointer, len, 1, file);
++    fclose(file);
++    */
++    return 0;
++}
++
+ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
+ 			   AM_MEDIA_TYPE* in_fmt,
+-			   AM_MEDIA_TYPE* out_fmt)
++               AM_MEDIA_TYPE* out_fmt,SampleProcUserData* pUserData)
+ {
+     HRESULT result = 0;
+     int init = 0;
+@@ -218,15 +244,21 @@ DS_Filter* DS_FilterCreate(const char* d
+             break;
+ 	}
+ 
+-	This->m_pOurOutput = COutputPinCreate(This->m_pDestType);
+-	result = This->m_pOutputPin->vt->ReceiveConnection(This->m_pOutputPin,
++	This->m_pOurOutput = COutputPinCreate(This->m_pDestType,DS_Filter_CopySample,pUserData);
++    result = This->m_pOutputPin->vt->QueryAccept(This->m_pOutputPin,
++                              This->m_pDestType);
++    // Only connect if we can.  Otherwise delay the connection until
++    // DS_VideoDecoder_SetDestFmt is called
++    if (! result) {
++	  result = This->m_pOutputPin->vt->ReceiveConnection(This->m_pOutputPin,
+ 							   (IPin*) This->m_pOurOutput,
+ 							   This->m_pDestType);
+-	if (result)
+-	{
+-	    em = "could not connect to output pin";
+-            break;
+-	}
++	  if (result)
++	  {
++        em = "could not connect to output pin";
++            break;
++	  }
++    }
+ 
+ 	printf("Using DirectShow codec: %s\n", dllname);
+ 	init++;
+diff -r 28563835c714 src/libw32dll/DirectShow/DS_Filter.h
+--- a/src/libw32dll/DirectShow/DS_Filter.h	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/DS_Filter.h	Sat Jun 30 14:23:16 2007 +0200
+@@ -7,6 +7,13 @@
+ #if defined(__cplusplus)
+ extern "C" {
+ #endif
++
++     
++typedef struct {
++    char* frame_pointer;
++    long frame_size;
++    int new_frame;
++} SampleProcUserData;
+ 
+ /**
+    User will allocate and fill format structures, call Create(),
+@@ -35,7 +42,7 @@ struct _DS_Filter
+ };
+ 
+ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
+-			   AM_MEDIA_TYPE* in_fmt, AM_MEDIA_TYPE* out_fmt);
++                           AM_MEDIA_TYPE* in_fmt, AM_MEDIA_TYPE* out_fmt,SampleProcUserData* pUserData);
+ void DS_Filter_Destroy(DS_Filter* This);
+ 
+ #if defined(__cplusplus)
+diff -r 28563835c714 src/libw32dll/DirectShow/DS_VideoDecoder.c
+--- a/src/libw32dll/DirectShow/DS_VideoDecoder.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/DS_VideoDecoder.c	Sat Jun 30 14:23:16 2007 +0200
+@@ -14,6 +14,8 @@
+ #include "libwin32.h"
+ #endif
+ #include "DS_Filter.h"
++
++#include "xineutils.h"
+ 
+ struct _DS_VideoDecoder
+ {
+@@ -30,6 +32,7 @@ struct _DS_VideoDecoder
+     int m_bIsDivX;             // for speed
+     int m_bIsDivX4;            // for speed
+ };
++static SampleProcUserData sampleProcData;
+ 
+ #include "DS_VideoDecoder.h"
+ 
+@@ -81,6 +84,108 @@ static ct check[] = {
+ 		{0},
+ 	    };
+ 
++DWORD avc_quant(BYTE *src, BYTE *dst, int len)
++{
++    //Stolen from libavcodec h264.c
++    BYTE *p = src, *d = dst;
++    int cnt;
++    cnt = *(p+5) & 0x1f; // Number of sps
++    if(src[0] != 0x01 || cnt > 1) {
++      xine_fast_memcpy(dst, src, len);
++      return len;
++    }
++    p += 6;
++    //cnt > 1 not supported?
++    cnt = (*p << 8) | *(p+1) + 2;
++    xine_fast_memcpy(d, p, cnt);
++    d+=cnt;
++    p+=cnt;
++    //assume pps cnt == 1 too
++    p++;
++    cnt = (*p << 8) | *(p+1) + 2;
++    xine_fast_memcpy(d, p, cnt);
++    return d + cnt - dst;
++      
++}
++#define is_avc(cc) (cc == mmioFOURCC('A', 'V', 'C', '1') || \
++                    cc == mmioFOURCC('a', 'v', 'c', '1'))
++char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
++{
++    struct VIDEOINFOHEADER2 {
++        RECT32              rcSource;
++        RECT32              rcTarget;
++        DWORD               dwBitRate;
++        DWORD               dwBitErrorRate;
++        REFERENCE_TIME      AvgTimePerFrame;
++        DWORD               dwInterlaceFlags;
++        DWORD               dwCopyProtectFlags;
++        DWORD               dwPictAspectRatioX; 
++        DWORD               dwPictAspectRatioY; 
++        union {
++            DWORD           dwControlFlags;
++            DWORD           dwReserved1;
++        };
++        DWORD               dwReserved2;
++        BITMAPINFOHEADER    bmiHeader;
++    };
++    struct MPEG2VIDEOINFO {
++        struct VIDEOINFOHEADER2    hdr;
++        DWORD               dwStartTimeCode;   
++        DWORD               cbSequenceHeader;     
++        DWORD               dwProfile;     
++        DWORD               dwLevel;            
++        DWORD               dwFlags;            
++        DWORD               dwSequenceHeader[1];
++    } *mp2vi;
++    unsigned char data[256];
++    int extra = 0;
++    if(vih->bmiHeader.biSize > sizeof(BITMAPINFOHEADER)) {
++      extra = vih->bmiHeader.biSize-sizeof(BITMAPINFOHEADER);
++    }
++    if(extra)
++        mp2vi = (struct MPEG2VIDEOINFO *)malloc(sizeof(struct MPEG2VIDEOINFO)+extra-4);
++    else
++        mp2vi = (struct MPEG2VIDEOINFO *)malloc(sizeof(struct MPEG2VIDEOINFO));
++    printf("Allocate: %d/%d\n", sizeof(struct MPEG2VIDEOINFO)+extra-4, sizeof(struct MPEG2VIDEOINFO));
++    memset(mp2vi, 0, sizeof(struct MPEG2VIDEOINFO));
++    mp2vi->hdr.rcSource = vih->rcSource;
++    mp2vi->hdr.rcTarget = vih->rcTarget;
++    mp2vi->hdr.dwBitRate = vih->dwBitRate;
++    mp2vi->hdr.dwBitErrorRate = vih->dwBitErrorRate;
++    mp2vi->hdr.AvgTimePerFrame = vih->AvgTimePerFrame;
++    mp2vi->hdr.dwPictAspectRatioX = vih->bmiHeader.biWidth;
++    mp2vi->hdr.dwPictAspectRatioY = vih->bmiHeader.biHeight;
++    xine_fast_memcpy(&mp2vi->hdr.bmiHeader, &vih->bmiHeader, sizeof(BITMAPINFOHEADER));
++    mp2vi->hdr.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
++    if(extra) {
++      int i;
++      if(is_avc(vih->bmiHeader.biCompression)) {
++        mp2vi->dwFlags = 4; //What does this mean?
++        mp2vi->cbSequenceHeader = avc_quant(
++                          (BYTE *)(&vih->bmiHeader) + sizeof(BITMAPINFOHEADER),
++                          (BYTE *)(&mp2vi->dwSequenceHeader[0]), extra);
++      } else {
++        mp2vi->cbSequenceHeader = extra;
++        xine_fast_memcpy(&mp2vi->dwSequenceHeader[0],
++               (BYTE *)(&vih->bmiHeader) + sizeof(BITMAPINFOHEADER), extra);
++      }
++    }
++    // The '4' is from the allocated space of dwSequenceHeader
++    *size = sizeof(struct MPEG2VIDEOINFO) + mp2vi->cbSequenceHeader - 4;
++    
++    // dump mp2vi
++    int i, j;
++    for(i=0, j=0; i<*size; i++, j++)
++    {
++        printf("0x%02x ", ((uint8_t*)mp2vi)[i]);
++        if(j==14) {
++            printf("\n");
++            j=-1;
++        }
++    }
++    
++    return (char *)mp2vi;
++}
+ 
+ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEADER * format, int flip, int maxauto)
+ {
+@@ -91,6 +196,10 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+     this = malloc(sizeof(DS_VideoDecoder));
+     memset( this, 0, sizeof(DS_VideoDecoder));
+     
++    sampleProcData.frame_pointer = NULL;
++    sampleProcData.frame_size = 0;
++    sampleProcData.new_frame = 0;
++    
+     this->m_sVhdr2 = 0;
+     this->m_iLastQuality = -1;
+     this->m_iMaxAuto = maxauto;
+@@ -109,7 +218,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+ 	    sizeof(BITMAPINFOHEADER) : format->biSize;
+      
+         this->iv.m_bh = (BITMAPINFOHEADER*)malloc(bihs);
+-        memcpy(this->iv.m_bh, format, bihs);
++        xine_fast_memcpy(this->iv.m_bh, format, bihs);
+         this->iv.m_bh->biSize = bihs;
+ 
+         this->iv.m_State = STOP;
+@@ -123,7 +232,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+         bihs += sizeof(VIDEOINFOHEADER) - sizeof(BITMAPINFOHEADER);
+ 	this->m_sVhdr = (VIDEOINFOHEADER*)malloc(bihs);
+ 	memset(this->m_sVhdr, 0, bihs);
+-	memcpy(&this->m_sVhdr->bmiHeader, this->iv.m_bh, this->iv.m_bh->biSize);
++	xine_fast_memcpy(&this->m_sVhdr->bmiHeader, this->iv.m_bh, this->iv.m_bh->biSize);
+ 	this->m_sVhdr->rcSource.left = this->m_sVhdr->rcSource.top = 0;
+ 	this->m_sVhdr->rcSource.right = this->m_sVhdr->bmiHeader.biWidth;
+ 	this->m_sVhdr->rcSource.bottom = this->m_sVhdr->bmiHeader.biHeight;
+@@ -140,9 +249,17 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+ 	this->m_sOurType.pUnk = 0;
+         this->m_sOurType.cbFormat = bihs;
+         this->m_sOurType.pbFormat = (char*)this->m_sVhdr;
++        
++        if(is_avc(this->m_sVhdr->bmiHeader.biCompression)) {
++          int size;
++          this->m_sOurType.formattype = FORMAT_MPEG2Video;
++          this->m_sOurType.pbFormat =
++                          (char*)ConvertVIHtoMPEG2VI(this->m_sVhdr, &size);
++          this->m_sOurType.cbFormat = size;
++        }
+ 
+ 	this->m_sVhdr2 = (VIDEOINFOHEADER*)(malloc(sizeof(VIDEOINFOHEADER)+12));
+-	memcpy(this->m_sVhdr2, this->m_sVhdr, sizeof(VIDEOINFOHEADER));
++	xine_fast_memcpy(this->m_sVhdr2, this->m_sVhdr, sizeof(VIDEOINFOHEADER));
+         memset((char*)this->m_sVhdr2 + sizeof(VIDEOINFOHEADER), 0, 12);
+ 	this->m_sVhdr2->bmiHeader.biCompression = 0;
+ 	this->m_sVhdr2->bmiHeader.biBitCount = 24;
+@@ -161,7 +278,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+ 	this->m_sDestType.pbFormat = (char*)this->m_sVhdr2;
+         
+         memset(&this->iv.m_obh, 0, sizeof(this->iv.m_obh));
+-	memcpy(&this->iv.m_obh, this->iv.m_bh, sizeof(this->iv.m_obh) < (unsigned) this->iv.m_bh->biSize
++	xine_fast_memcpy(&this->iv.m_obh, this->iv.m_bh, sizeof(this->iv.m_obh) < (unsigned) this->iv.m_bh->biSize
+ 	       ? sizeof(this->iv.m_obh) : (unsigned) this->iv.m_bh->biSize);
+ 	this->iv.m_obh.biBitCount=24;
+         this->iv.m_obh.biSize = sizeof(BITMAPINFOHEADER);
+@@ -171,7 +288,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+                               * ((this->iv.m_obh.biBitCount + 7) / 8);
+ 
+ 
+-	this->m_pDS_Filter = DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType);
++        this->m_pDS_Filter =  DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType,&sampleProcData);
+ 	
+ 	if (!this->m_pDS_Filter)
+ 	{
+@@ -195,7 +312,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(c
+ 	    }
+ 	}
+ 
+-        memcpy( &this->iv.m_decoder, &this->iv.m_obh, sizeof(this->iv.m_obh) );
++        xine_fast_memcpy( &this->iv.m_decoder, &this->iv.m_obh, sizeof(this->iv.m_obh) );
+ 
+ 	switch (this->iv.m_bh->biCompression)
+ 	{
+@@ -313,15 +430,11 @@ int DS_VideoDecoder_DecodeInternal(DS_Vi
+     }
+     
+     //cout << "DECODE " << (void*) pImage << "   d: " << (void*) pImage->Data() << endl;
+-    if (pImage)
+-    {
+-	this->m_pDS_Filter->m_pOurOutput->SetPointer2(this->m_pDS_Filter->m_pOurOutput,pImage);
+-    }
+ 
+ 
+     sample->vt->SetActualDataLength(sample, size);
+     sample->vt->GetPointer(sample, (BYTE **)&ptr);
+-    memcpy(ptr, src, size);
++    xine_fast_memcpy(ptr, src, size);
+     sample->vt->SetSyncPoint(sample, is_keyframe);
+     sample->vt->SetPreroll(sample, pImage ? 0 : 1);
+     // sample->vt->SetMediaType(sample, &m_sOurType);
+@@ -347,8 +460,18 @@ int DS_VideoDecoder_DecodeInternal(DS_Vi
+ 	Debug printf("DS_VideoDecoder::DecodeInternal() error putting data into input pin %x\n", result);
+     }
+ 
++    if (pImage && sampleProcData.new_frame && sampleProcData.frame_size>0)
++    {
++        xine_fast_memcpy(pImage, sampleProcData.frame_pointer, sampleProcData.frame_size);
++    }
++    
+     sample->vt->Release((IUnknown*)sample);
+ 
++    if(!sampleProcData.new_frame)
++        return 1;
++    else
++        sampleProcData.new_frame = 0;
++    
+ #if 0
+     if (this->m_bIsDivX)
+     {
+@@ -523,7 +646,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoD
+         }
+     }
+     this->m_sDestType.lSampleSize = this->iv.m_obh.biSizeImage;
+-    memcpy(&(this->m_sVhdr2->bmiHeader), &this->iv.m_obh, sizeof(this->iv.m_obh));
++    xine_fast_memcpy(&(this->m_sVhdr2->bmiHeader), &this->iv.m_obh, sizeof(this->iv.m_obh));
+     this->m_sVhdr2->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+     if (this->m_sVhdr2->bmiHeader.biCompression == 3)
+         this->m_sDestType.cbFormat = sizeof(VIDEOINFOHEADER) + 12;
+@@ -575,7 +698,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoD
+ 	    printf("Warning: unsupported bit depth\n");
+ 
+ 	this->m_sDestType.lSampleSize = this->iv.m_decoder.biSizeImage;
+-	memcpy(&(this->m_sVhdr2->bmiHeader), &this->iv.m_decoder, sizeof(this->iv.m_decoder));
++	xine_fast_memcpy(&(this->m_sVhdr2->bmiHeader), &this->iv.m_decoder, sizeof(this->iv.m_decoder));
+ 	this->m_sVhdr2->bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+ 	if (this->m_sVhdr2->bmiHeader.biCompression == 3)
+     	    this->m_sDestType.cbFormat = sizeof(VIDEOINFOHEADER) + 12;
+@@ -585,7 +708,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoD
+ 	return -1;
+     }
+ 
+-    memcpy( &this->iv.m_decoder, &this->iv.m_obh, sizeof(this->iv.m_obh));
++    xine_fast_memcpy( &this->iv.m_decoder, &this->iv.m_obh, sizeof(this->iv.m_obh));
+ 
+ //    m_obh=temp;
+ //    if(csp)
+diff -r 28563835c714 src/libw32dll/DirectShow/guids.c
+--- a/src/libw32dll/DirectShow/guids.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/guids.c	Sat Jun 30 14:23:16 2007 +0200
+@@ -26,6 +26,8 @@ const GUID GUID_NULL={0x0, 0x0, 0x0,
+     {0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}};
+ const GUID FORMAT_VideoInfo={0x05589f80, 0xc356, 0x11ce,
+     {0xbf, 0x01, 0x00, 0xaa, 0x00, 0x55, 0x59, 0x5a}};
++const GUID FORMAT_MPEG2Video={0xe06d80e3, 0xdb46, 0x11cf,
++    {0xb4, 0xd1, 0x00, 0x80, 0x5f, 0x6c, 0xbb, 0xea}};
+ const GUID MEDIASUBTYPE_RGB1={0xe436eb78, 0x524f, 0x11ce,
+     {0x9f, 0x53, 0x00, 0x20, 0xaf, 0x0b, 0xa7, 0x70}};
+ const GUID MEDIASUBTYPE_RGB4={0xe436eb79, 0x524f, 0x11ce,
+diff -r 28563835c714 src/libw32dll/DirectShow/guids.h
+--- a/src/libw32dll/DirectShow/guids.h	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/guids.h	Sat Jun 30 14:23:16 2007 +0200
+@@ -56,6 +56,7 @@ extern const GUID CLSID_IV50_Decoder;
+ extern const GUID CLSID_IV50_Decoder;
+ extern const GUID CLSID_MemoryAllocator;
+ extern const GUID MEDIATYPE_Video;
++extern const GUID FORMAT_MPEG2Video;
+ extern const GUID GUID_NULL;
+ extern const GUID FORMAT_VideoInfo;
+ extern const GUID MEDIASUBTYPE_RGB1;
+diff -r 28563835c714 src/libw32dll/DirectShow/outputpin.c
+--- a/src/libw32dll/DirectShow/outputpin.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/outputpin.c	Sat Jun 30 14:23:16 2007 +0200
+@@ -359,36 +359,13 @@ static HRESULT STDCALL COutputPin_Receiv
+ static HRESULT STDCALL COutputPin_Receive(IMemInputPin* This,
+ 					  /* [in] */ IMediaSample* pSample)
+ {
+-    COutputMemPin* mp = (COutputMemPin*)This;
+-    char* pointer;
+-    int len;
+-
+     Debug printf("COutputPin_Receive(%p) called\n", This);
+     if (!pSample)
+ 	return E_INVALIDARG;
+-    if (pSample->vt->GetPointer(pSample, (BYTE**) &pointer))
+-	return -1;
+-    len = pSample->vt->GetActualDataLength(pSample);
+-    if (len == 0)
+-	len = pSample->vt->GetSize(pSample);//for iv50
+-    //if(me.frame_pointer)memcpy(me.frame_pointer, pointer, len);
+-
+-    if (mp->frame_pointer)
+-	*(mp->frame_pointer) = pointer;
+-    if (mp->frame_size_pointer)
+-	*(mp->frame_size_pointer) = len;
+-/*
+-    FILE* file=fopen("./uncompr.bmp", "wb");
+-    char head[14]={0x42, 0x4D, 0x36, 0x10, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00};
+-    *(int*)(&head[2])=len+0x36;
+-    fwrite(head, 14, 1, file);
+-    fwrite(&((VIDEOINFOHEADER*)me.type.pbFormat)->bmiHeader, sizeof(BITMAPINFOHEADER), 1, file);
+-    fwrite(pointer, len, 1, file);
+-    fclose(file);
+-*/
+-//    pSample->vt->Release((IUnknown*)pSample);
+-
+-    return 0;
++    if(((COutputMemPin*)This)->parent->SampleProc)
++        return ((COutputMemPin*)This)->parent->SampleProc(((COutputMemPin*)This)->parent->pUserData,pSample);
++    //reject sample
++    return S_FALSE;
+ }
+ 
+ static HRESULT STDCALL COutputPin_ReceiveMultiple(IMemInputPin * This,
+@@ -396,29 +373,18 @@ static HRESULT STDCALL COutputPin_Receiv
+ 					    /* [in] */ long nSamples,
+ 					    /* [out] */ long *nSamplesProcessed)
+ {
+-    return output_unimplemented("COutputPin_ReceiveMultiple", This);
++    HRESULT hr;
++    Debug printf("COutputMemPin_ReceiveMultiple(%p) %d\n", This,nSamples);
++    for(*nSamplesProcessed=0; *nSamplesProcessed < nSamples; *nSamplesProcessed++) {
++        hr = This->vt->Receive(This,pSamples[*nSamplesProcessed]);
++        if (hr != S_OK) break;
++    }
++    return hr;
+ }
+ 
+ static HRESULT STDCALL COutputPin_ReceiveCanBlock(IMemInputPin * This)
+ {
+     return output_unimplemented("COutputPin_ReceiveCanBlock", This);
+-}
+-
+-static void COutputPin_SetFramePointer(COutputPin* This, char** z)
+-{
+-    This->mempin->frame_pointer = z;
+-}
+-
+-static void COutputPin_SetPointer2(COutputPin* This, char* p)
+-{
+-    if (This->mempin->pAllocator)
+-        // fixme
+-	This->mempin->pAllocator->SetPointer(This->mempin->pAllocator, p);
+-}
+-
+-static void COutputPin_SetFrameSizePointer(COutputPin* This, long* z)
+-{
+-    This->mempin->frame_size_pointer = z;
+ }
+ 
+ static void COutputPin_SetNewFormat(COutputPin* This, const AM_MEDIA_TYPE* amt)
+@@ -472,7 +438,7 @@ static HRESULT STDCALL COutputPin_M_Rele
+     return 0;
+ }
+ 
+-COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* amt)
++COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* amt,SAMPLEPROC SampleProc,void* pUserData)
+ {
+     COutputPin* This = (COutputPin*) malloc(sizeof(COutputPin));
+     IMemInputPin_vt* ivt;
+@@ -491,6 +457,9 @@ COutputPin* COutputPinCreate(const AM_ME
+ 	return NULL;
+     }
+ 
++    This->SampleProc=SampleProc;
++    This->pUserData=pUserData;
++    
+     This->mempin->vt = ivt;
+ 
+     This->refcount = 1;
+@@ -532,9 +501,6 @@ COutputPin* COutputPinCreate(const AM_ME
+     This->mempin->refcount = 1;
+     This->mempin->parent = This;
+ 
+-    This->SetPointer2 = COutputPin_SetPointer2;
+-    This->SetFramePointer = COutputPin_SetFramePointer;
+-    This->SetFrameSizePointer = COutputPin_SetFrameSizePointer;
+     This->SetNewFormat = COutputPin_SetNewFormat;
+ 
+     return This;
+diff -r 28563835c714 src/libw32dll/DirectShow/outputpin.h
+--- a/src/libw32dll/DirectShow/outputpin.h	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/DirectShow/outputpin.h	Sat Jun 30 14:23:16 2007 +0200
+@@ -8,6 +8,13 @@ typedef struct _COutputMemPin COutputMem
+ typedef struct _COutputMemPin COutputMemPin;
+ typedef struct _COutputPin COutputPin;
+ 
++/**
++ Callback routine for copying samples from pin into filter
++ \param pUserData pointer to user's data
++ \param sample IMediaSample
++*/
++typedef  HRESULT STDCALL (*SAMPLEPROC)(void* pUserData,IMediaSample*sample);
++
+ struct _COutputPin
+ {
+     IPin_vt* vt;
+@@ -15,12 +22,11 @@ struct _COutputPin
+     COutputMemPin* mempin;
+     AM_MEDIA_TYPE type;
+     IPin* remote;
+-    void ( *SetFramePointer )(COutputPin*, char** z);
+-    void ( *SetPointer2 )(COutputPin*, char* p);
+-    void ( *SetFrameSizePointer )(COutputPin*, long* z);
++    SAMPLEPROC SampleProc;
++    void* pUserData;
+     void ( *SetNewFormat )(COutputPin*, const AM_MEDIA_TYPE* a);
+ };
+ 
+-COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* vhdr);
++COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* amt,SAMPLEPROC SampleProc,void* pUserData);
+ 
+ #endif /* DS_OUTPUTPIN_H */
+diff -r 28563835c714 src/libw32dll/Makefile.am
+--- a/src/libw32dll/Makefile.am	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/Makefile.am	Sat Jun 30 14:24:03 2007 +0200
+@@ -13,7 +13,7 @@ xineplug_LTLIBRARIES = $(w32dll_codec) $
+ 
+ EXTRA_DIST = common.c
+ 
+-xineplug_decode_w32dll_la_SOURCES = w32codec.c
++xineplug_decode_w32dll_la_SOURCES = w32codec.c nal_parser.c
+ xineplug_decode_w32dll_la_LDFLAGS = -avoid-version -module
+ xineplug_decode_w32dll_la_LIBADD = \
+ 	$(top_builddir)/src/libw32dll/wine/libwine.la \
+@@ -33,4 +33,4 @@ xineplug_decode_qt_la_LIBADD = \
+ 	-lm \
+ 	@KSTAT_LIBS@
+ 
+-noinst_HEADERS = libwin32.h w32codec.h
++noinst_HEADERS = libwin32.h w32codec.h nal_parser.h
+diff -r 28563835c714 src/libw32dll/nal_parser.c
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/libw32dll/nal_parser.c	Sat Jun 30 14:23:45 2007 +0200
+@@ -0,0 +1,516 @@
++#include <stdio.h>
++#include <stdlib.h>
++
++#include "nal_parser.h"
++
++struct buf_reader {
++    uint8_t *buf;
++    uint8_t *cur_pos;
++    int len;
++    int cur_offset;
++};
++
++static inline uint32_t read_bits(struct buf_reader *buf, int len);
++uint32_t read_exp_golomb(struct buf_reader *buf);
++int32_t read_exp_golomb_s(struct buf_reader *buf);
++void skip_scaling_list(struct buf_reader *buf, int size);
++int parse_nal_header(struct buf_reader *buf, struct nal_unit *nal);
++uint8_t parse_sps(struct buf_reader *buf, struct seq_parameter_set_rbsp *sps);
++uint8_t parse_pps(struct buf_reader *buf, struct pic_parameter_set_rbsp *pps);
++uint8_t parse_slice_header(struct buf_reader *buf, struct nal_unit *nal);
++
++
++static void decode_nal(uint8_t **ret, int *len_ret, uint8_t *buf, int buf_len)
++{
++    uint8_t *end = &buf[buf_len];
++    uint8_t *pos = malloc(buf_len);
++    
++    *ret = pos;
++    while(buf < end) {
++        if(buf < end - 3 && buf[0] == 0x00 && buf[1] == 0x00 &&
++           buf[2] == 0x03) {
++            
++            *pos++ = 0x00;
++            *pos++ = 0x00;
++            
++            buf += 3;
++            continue;
++        }
++        *pos++ = *buf++;
++    }
++    
++    *len_ret = pos - *ret;
++}
++
++/*uint32_t read_bits(struct buf_reader *buf, int len)
++{
++    uint32_t bits = 0x00;
++    int i, j;
++    for(i=0, j=0; i<len; i++) {
++        while(buf->cur_offset >= 8) {
++            buf->cur_pos++;
++            buf->cur_offset -= 8;
++        }
++        uint8_t bit = (*buf->cur_pos >> (7 - buf->cur_offset)) & 0x01;
++        bits |= ((uint32_t)bit) << i;
++        buf->cur_offset++;
++    }
++printf("ret: 0x%08x\n", bits);
++    return bits;
++}*/
++
++static inline uint32_t read_bits (struct buf_reader *buf, int len)
++{
++    static uint32_t i_mask[33] =
++    {  0x00,
++       0x01,      0x03,      0x07,      0x0f,
++       0x1f,      0x3f,      0x7f,      0xff,
++       0x1ff,     0x3ff,     0x7ff,     0xfff,
++       0x1fff,    0x3fff,    0x7fff,    0xffff,
++       0x1ffff,   0x3ffff,   0x7ffff,   0xfffff,
++       0x1fffff,  0x3fffff,  0x7fffff,  0xffffff,
++       0x1ffffff, 0x3ffffff, 0x7ffffff, 0xfffffff,
++       0x1fffffff,0x3fffffff,0x7fffffff,0xffffffff};
++       
++    int i_shr;
++    uint32_t bits = 0;
++    
++    while(len > 0 && (buf->cur_pos - buf->buf) < buf->len) {
++        if((i_shr = buf->cur_offset-len) >= 0) {
++            bits |= (*buf->cur_pos >> i_shr)&i_mask[len];
++            buf->cur_offset -= len;
++            if(buf->cur_offset == 0) {
++                buf->cur_pos++;
++                buf->cur_offset = 8;
++            }
++            return bits;
++        } else {
++            bits |= (*buf->cur_pos & i_mask[buf->cur_offset]) << -i_shr;
++            len -= buf->cur_offset;
++            buf->cur_pos++;
++            buf->cur_offset = 8;
++        }
++    }
++    return bits;
++}
++
++uint32_t read_exp_golomb(struct buf_reader *buf)
++{
++    int leading_zero_bits = 0;
++
++    while(read_bits(buf, 1) == 0 && leading_zero_bits < 32)
++        leading_zero_bits++;
++
++    uint32_t code = (1<<leading_zero_bits) - 1 + read_bits(buf, leading_zero_bits);
++    return code;
++}
++
++int32_t read_exp_golomb_s(struct buf_reader *buf)
++{
++    uint32_t ue = read_exp_golomb(buf);
++    int32_t code = ue&0x01 ? (ue+1)/2 : -(ue/2);
++    return code;
++}
++
++int parse_nal_header(struct buf_reader *buf, struct nal_unit *nal)
++{
++    if(buf->len < 1)
++        return -1;
++    int ret = -1;
++    
++    nal->nal_ref_idc = (buf->buf[0] >> 5) & 0x03;
++    nal->nal_unit_type = buf->buf[0] & 0x1f;
++    
++    buf->cur_pos = buf->buf + 1;
++    //printf("NAL: %d\n", nal->nal_unit_type);
++    
++    struct buf_reader ibuf;
++    ibuf.cur_offset = 8;
++    
++    switch(nal->nal_unit_type) {
++        case NAL_SPS:
++            decode_nal(&ibuf.buf, &ibuf.len, buf->cur_pos, buf->len-1);
++            ibuf.cur_pos = ibuf.buf;
++            if(!nal->sps)
++                nal->sps = malloc(sizeof(struct seq_parameter_set_rbsp));
++            else
++                memset(nal->sps, 0x00, sizeof(struct seq_parameter_set_rbsp));
++            
++            parse_sps(&ibuf, nal->sps);
++            free(ibuf.buf);
++            ret = NAL_SPS;
++            break;
++        case NAL_PPS:
++            if(!nal->pps)
++                nal->pps = malloc(sizeof(struct pic_parameter_set_rbsp));
++            else
++                memset(nal->pps, 0x00, sizeof(struct pic_parameter_set_rbsp));
++            
++            parse_pps(buf, nal->pps);
++            ret = NAL_PPS;
++            break;
++        case NAL_SLICE:
++        case NAL_PART_A:
++        case NAL_PART_B:
++        case NAL_PART_C:
++        case NAL_SLICE_IDR:
++            if(nal->sps && nal->pps) {
++                if(!nal->slc)
++                    nal->slc = malloc(sizeof(struct slice_header));
++                else
++                    memset(nal->slc, 0x00, sizeof(struct slice_header));
++                
++                parse_slice_header(buf, nal);
++                ret = nal->nal_unit_type;
++            }
++            break;
++        default:
++            ret = nal->nal_unit_type;
++            break;
++    }
++    
++    return ret;
++}
++
++void skip_scaling_list(struct buf_reader *buf, int size)
++{
++    int i;
++    for(i = 0; i < size; i++) {
++        read_exp_golomb_s(buf);
++    }
++}
++
++uint8_t parse_sps(struct buf_reader *buf, struct seq_parameter_set_rbsp *sps)
++{
++    sps->profile_idc = buf->buf[0];
++    sps->constraint_setN_flag = (buf->buf[1] >> 4) & 0x0f;
++    sps->level_idc = buf->buf[2];
++    
++    buf->cur_pos = buf->buf+3;
++    sps->seq_parameter_set_id = read_exp_golomb(buf);
++    if(sps->profile_idc == 100 || sps->profile_idc == 110 ||
++       sps->profile_idc == 122 || sps->profile_idc == 144) {
++        sps->chroma_format_idc = read_exp_golomb(buf);
++        if(sps->chroma_format_idc == 3) {
++            sps->residual_colour_transform_flag = read_bits(buf, 1);
++        }
++
++        sps->bit_depth_luma_minus8 = read_exp_golomb(buf);
++        sps->bit_depth_chroma_minus8 = read_exp_golomb(buf);
++        sps->qpprime_y_zero_transform_bypass_flag = read_bits(buf, 1);
++        sps->seq_scaling_matrix_present_flag = read_bits(buf, 1);
++        if(sps->seq_scaling_matrix_present_flag) {
++            sps->seq_scaling_lists_present_flag = read_bits(buf, 8);
++            int i;
++            for(i=0; i<8; i++) {
++                if((sps->seq_scaling_lists_present_flag >> (7-i)) & 0x01) {
++                    // NOTE: just skip the scaling lists, as we do not
++                    // need their data for parsing
++                    if(i<6)
++                        skip_scaling_list(buf, 16);
++                    else
++                        skip_scaling_list(buf, 64);
++                }
++            }
++        }
++    }
++    
++    sps->log2_max_frame_num_minus4 = read_exp_golomb(buf);
++
++    sps->pic_order_cnt_type = read_exp_golomb(buf);
++    if(!sps->pic_order_cnt_type)
++        sps->log2_max_pic_order_cnt_lsb_minus4 = read_exp_golomb(buf);
++    else {
++        sps->delta_pic_order_always_zero_flag = read_bits(buf, 1);
++        sps->offset_for_non_ref_pic = read_exp_golomb_s(buf);
++        sps->offset_for_top_to_bottom_field = read_exp_golomb_s(buf);
++        sps->num_ref_frames_in_pic_order_cnt_cycle = read_exp_golomb(buf);
++        int i;
++        for(i=0; i<sps->num_ref_frames_in_pic_order_cnt_cycle; i++) {
++            sps->offset_for_ref_frame[i] = read_exp_golomb_s(buf);
++        }
++    }
++    sps->num_ref_frames = read_exp_golomb(buf);
++    sps->gaps_in_frame_num_value_allowed_flag = read_bits(buf, 1);
++    
++    /*sps->pic_width_in_mbs_minus1 = read_exp_golomb(buf);
++    sps->pic_height_in_map_units_minus1 = read_exp_golomb(buf);*/
++    sps->pic_width = 16 * (read_exp_golomb(buf) + 1);
++    sps->pic_height = 16 * (read_exp_golomb(buf) + 1);
++    //printf("res: %dx%d\n", sps->pic_width, sps->pic_height);
++    
++    sps->frame_mbs_only_flag = read_bits(buf, 1);
++    if(!sps->frame_mbs_only_flag)
++        sps->mb_adaptive_frame_field_flag = read_bits(buf, 1);
++    
++    sps->direct_8x8_inference_flag = read_bits(buf, 1);
++    sps->frame_cropping_flag = read_bits(buf, 1);
++    if(sps->frame_cropping_flag) {
++        sps->frame_crop_left_offset = read_exp_golomb(buf);
++        sps->frame_crop_right_offset = read_exp_golomb(buf);
++        sps->frame_crop_top_offset = read_exp_golomb(buf);
++        sps->frame_crop_bottom_offset = read_exp_golomb(buf);
++    }
++    sps->vui_parameters_present_flag = read_bits(buf, 1);
++    /*if(sps->vui_parameters_present_flag)
++        printf("ERROR: vui_parameters is not implemented\n");*/
++    
++    return 0;
++}
++
++uint8_t parse_pps(struct buf_reader *buf, struct pic_parameter_set_rbsp *pps)
++{
++    pps->pic_parameter_set_id = read_exp_golomb(buf);
++    pps->seq_parameter_set_id = read_exp_golomb(buf);
++    pps->entropy_coding_mode_flag = read_bits(buf, 1);
++    pps->pic_order_present_flag = read_bits(buf, 1);
++    return 0;
++}
++
++uint8_t parse_slice_header(struct buf_reader *buf, struct nal_unit *nal)
++{
++    struct seq_parameter_set_rbsp *sps = nal->sps;
++    struct pic_parameter_set_rbsp *pps = nal->pps;
++    struct slice_header *slc = nal->slc;
++    if(!sps || !pps)
++        return -1;
++
++    slc->first_mb_in_slice = read_exp_golomb(buf);
++    slc->slice_type = read_exp_golomb(buf);
++    slc->pic_parameter_set_id = read_exp_golomb(buf);
++    slc->frame_num = read_bits(buf, sps->log2_max_frame_num_minus4 + 4);
++    if(!sps->frame_mbs_only_flag) {
++        slc->field_pic_flag = read_bits(buf, 1);
++        if(slc->field_pic_flag)
++            slc->bottom_field_flag = read_bits(buf, 1);
++        else
++            slc->bottom_field_flag = -1;
++    } else {
++        slc->field_pic_flag = 0;
++        slc->bottom_field_flag = -1;
++    }
++    
++    if(nal->nal_unit_type == NAL_SLICE_IDR) 
++        slc->idr_pic_id = read_exp_golomb(buf);
++    
++    if(!sps->pic_order_cnt_type) {
++        slc->pic_order_cnt_lsb = read_bits(buf, sps->log2_max_pic_order_cnt_lsb_minus4 + 4);
++        if(pps->pic_order_present_flag && !slc->field_pic_flag)
++            slc->delta_pic_order_cnt_bottom = read_exp_golomb_s(buf);
++    } else if (sps->pic_order_cnt_type == 1) {
++        slc->delta_pic_order_cnt[0] = read_exp_golomb_s(buf);
++        if(pps->pic_order_present_flag && !slc->field_pic_flag)
++            slc->delta_pic_order_cnt[1] = read_exp_golomb_s(buf);
++    }
++    /* do not need more information for packetizing */
++    
++    return 0;
++}
++
++
++
++/* ----------------- NAL parser ----------------- */
++
++struct nal_parser* init_parser()
++{
++    struct nal_parser *parser = malloc(sizeof(struct nal_parser));
++    memset(parser->buf, 0x00, MAX_FRAME_SIZE);
++    parser->buf_len = 0;
++    parser->found_sps = 0;
++    parser->found_pps = 0;
++    parser->nal0 = malloc(sizeof(struct nal_unit));
++    memset(parser->nal0, 0x00, sizeof(struct nal_unit));
++    parser->nal1 = malloc(sizeof(struct nal_unit));
++    memset(parser->nal1, 0x00, sizeof(struct nal_unit));
++    parser->current_nal = parser->nal0;
++    parser->last_nal = parser->nal1;
++    
++    parser->last_nal_res = 0;
++    parser->slice = 0;
++    parser->field = -1;
++    parser->have_top = 0;
++    
++    return parser;
++}
++
++void free_parser(struct nal_parser *parser)
++{
++    free(parser->nal0);
++    free(parser->nal1);
++    free(parser);    
++}
++
++int parse_frame(struct nal_parser *parser, uint8_t *inbuf, int inbuf_len,
++                uint8_t **ret_buf, int *ret_len)
++{
++    int next_nal;
++    int parsed_len = 0;
++    int search_offset = 0;
++
++    while((next_nal = seek_for_nal(inbuf+search_offset, inbuf_len-parsed_len)) >= 0) {
++        // save buffer up to the nal-start
++        if(parser->buf_len + next_nal + search_offset > MAX_FRAME_SIZE) {
++            printf("buf underrun!!\n");
++            *ret_len = 0;
++            *ret_buf = NULL;
++            return parsed_len;
++        }
++        //if(parser->last_nal_res != 1) {
++            xine_fast_memcpy(&parser->buf[parser->buf_len], inbuf, next_nal+search_offset);
++            parser->buf_len += next_nal+search_offset;
++        //}
++        inbuf += next_nal+search_offset;
++        parsed_len += next_nal+search_offset;
++        
++        if((parser->last_nal_res = parse_nal(inbuf+4, inbuf_len-parsed_len, parser)) == 1
++            && parser->buf_len>0) {
++            // parse_nal returned 1 --> detected a frame_boundary
++            *ret_buf = malloc(parser->buf_len);
++            xine_fast_memcpy(*ret_buf, parser->buf, parser->buf_len);
++            *ret_len = parser->buf_len;
++        
++            //memset(parser->buf, 0x00, parser->buf_len);
++            parser->buf_len = 0;
++            parser->last_nal_res = 0;
++            return parsed_len;
++        } 
++
++        search_offset = 4;
++    }
++    
++    // no further NAL found, copy the rest of the stream
++    // into the buffer
++//    if(parser->last_nal_res != 1) {
++        xine_fast_memcpy(&parser->buf[parser->buf_len], inbuf, inbuf_len-parsed_len);
++        parser->buf_len += inbuf_len-parsed_len;
++//    }
++    
++    parsed_len += (inbuf_len-parsed_len);
++    *ret_len = 0;
++    *ret_buf = NULL;
++
++    return parsed_len;
++}
++
++int parse_nal(uint8_t *buf, int buf_len, struct nal_parser *parser)
++{
++    struct buf_reader bufr;
++    
++    bufr.buf = buf;
++    bufr.cur_pos = buf;
++    bufr.cur_offset = 8;
++    bufr.len = buf_len;
++    
++    struct nal_unit *nal = parser->current_nal;
++    struct nal_unit *last_nal = parser->last_nal;
++    
++    int res = parse_nal_header(&bufr, nal);
++
++    if(res >= NAL_SLICE && res <= NAL_SLICE_IDR) {
++        // now detect if it's a new frame!
++        int ret = 0;
++        if(nal->slc->field_pic_flag == 1)
++            parser->field = nal->slc->bottom_field_flag;
++        else {
++            parser->have_top = 1;
++            parser->field = -1;
++        }
++        
++        if(nal->slc->field_pic_flag == 1 && nal->slc->bottom_field_flag == 0)
++            parser->have_top = 1;
++                    
++        parser->slice = 1;
++        
++        if(nal->slc == NULL || last_nal->slc == NULL) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->slc->frame_num != last_nal->slc->frame_num)) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->slc->pic_parameter_set_id != last_nal->slc->pic_parameter_set_id)) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->slc->field_pic_flag != last_nal->slc->field_pic_flag)) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->slc->bottom_field_flag != -1 &&
++                last_nal->slc->bottom_field_flag != -1 &&
++                nal->slc->bottom_field_flag != last_nal->slc->bottom_field_flag)) {
++            ret = 1;
++        }
++        if(nal->nal_ref_idc != last_nal->nal_ref_idc &&
++                (nal->nal_ref_idc == 0 || last_nal->nal_ref_idc == 0)) {
++            ret = 1;
++        }
++        if(nal->sps && nal->slc && last_nal->slc &&
++           (nal->sps->pic_order_cnt_type == 0 &&
++                (nal->slc->pic_order_cnt_lsb != last_nal->slc->pic_order_cnt_lsb ||
++                 nal->slc->delta_pic_order_cnt_bottom != last_nal->slc->delta_pic_order_cnt_bottom))) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->sps->pic_order_cnt_type == 1 &&
++                (nal->slc->delta_pic_order_cnt[0] != last_nal->slc->delta_pic_order_cnt[0] ||
++                nal->slc->delta_pic_order_cnt[1] != last_nal->slc->delta_pic_order_cnt[1]))) {
++            ret = 1;
++        }
++        if(nal->nal_unit_type != last_nal->nal_unit_type &&
++                (nal->nal_unit_type == 5 || last_nal->nal_unit_type == 5)) {
++            ret = 1;
++        }
++        if(nal->slc && last_nal->slc &&
++           (nal->nal_unit_type == 5 && last_nal->nal_unit_type == 5 &&
++                nal->slc->idr_pic_id != last_nal->slc->idr_pic_id)) {
++            ret = 1;
++        }
++        
++        if(parser->current_nal == parser->nal0) {
++            parser->current_nal = parser->nal1;
++            parser->last_nal = parser->nal0;
++        }
++        else {
++            parser->current_nal = parser->nal0;
++            parser->last_nal = parser->nal1;
++        }
++        if(parser->current_nal->sps == NULL)
++            parser->current_nal->sps = parser->last_nal->sps;
++        if(parser->current_nal->pps == NULL)
++            parser->current_nal->pps = parser->last_nal->pps;
++        
++        /*if(ret)
++            parser->slice = 0;*/
++        /*if(parser->slice && parser->have_top && parser->field != 0) {
++            parser->have_frame = 1;
++            parser->have_top = 0;
++            parser->slice = 0;
++            return ret;
++        }*/
++        return 0;
++    } else if(res == NAL_PPS || res == NAL_SPS) {
++        return 1;
++    } else if (res == NAL_AU_DELIMITER || res == NAL_SEI ||
++               (res >= 13 && res <= 18)) {
++        //printf("New Frame\n");
++        return 1;
++    }
++    
++    return 0;
++}
++
++int seek_for_nal(uint8_t *buf, int buf_len)
++{
++    int i;
++    for(i=0; i<buf_len-3; i++) {
++        if(buf[i] == 0x00 && buf[i+1] == 0x00 &&
++           buf[i+2] == 0x00 && buf[i+3] == 0x01) {
++            //printf("found nal at: %d\n", i);
++            return i;
++           }
++    }
++    
++    return -1;
++}
+diff -r 28563835c714 src/libw32dll/nal_parser.h
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/libw32dll/nal_parser.h	Sat Jun 30 14:23:49 2007 +0200
+@@ -0,0 +1,141 @@
++#ifndef NAL_PARSER_H_
++#define NAL_PARSER_H_
++
++#include <stdlib.h>
++
++#include "xine_internal.h"
++
++enum nal_unit_types {
++    NAL_UNSPECIFIED = 0,
++    NAL_SLICE,
++    NAL_PART_A,
++    NAL_PART_B,
++    NAL_PART_C,
++    NAL_SLICE_IDR,
++    NAL_SEI,
++    NAL_SPS,
++    NAL_PPS,
++    NAL_AU_DELIMITER,
++    NAL_END_OF_SEQUENCE,
++    NAL_END_OF_STREAM,
++    NAL_FILLER_DATA,
++    NAL_SPS_EXT
++};
++
++
++
++struct nal_unit {
++    uint8_t     nal_ref_idc;    // 0x03
++    uint8_t     nal_unit_type;  // 0x1f
++    
++    struct seq_parameter_set_rbsp   *sps;
++    struct pic_parameter_set_rbsp   *pps;
++    struct slice_header             *slc;
++};
++
++struct seq_parameter_set_rbsp {
++    uint8_t     profile_idc;            // 0xff
++    uint8_t     constraint_setN_flag;   // 0x0f
++    uint8_t     level_idc;              // 0xff
++    uint32_t    seq_parameter_set_id;
++    uint32_t    chroma_format_idc;
++    uint8_t     residual_colour_transform_flag;  // 0x01
++    uint32_t    bit_depth_luma_minus8;
++    uint32_t    bit_depth_chroma_minus8;
++    uint8_t     qpprime_y_zero_transform_bypass_flag;
++    uint8_t     seq_scaling_matrix_present_flag;
++    uint8_t     seq_scaling_lists_present_flag;  // each bit = 1 list flag
++    // TODO: here would be the scaling lists...
++    uint32_t    log2_max_frame_num_minus4;
++    uint32_t    pic_order_cnt_type;
++    // if pic_order_cnt_type==0
++    uint32_t    log2_max_pic_order_cnt_lsb_minus4;
++    // else
++    uint8_t     delta_pic_order_always_zero_flag;
++    int32_t     offset_for_non_ref_pic;
++    int32_t     offset_for_top_to_bottom_field;
++    uint8_t     num_ref_frames_in_pic_order_cnt_cycle;
++    int32_t     offset_for_ref_frame[256];
++    // TODO: some more ignored here
++    uint32_t    num_ref_frames;
++    uint8_t     gaps_in_frame_num_value_allowed_flag;
++    /*uint32_t    pic_width_in_mbs_minus1;
++    uint32_t    pic_height_in_map_units_minus1;*/
++    uint32_t    pic_width;
++    uint32_t    pic_height;
++    uint8_t     frame_mbs_only_flag;
++    uint8_t     mb_adaptive_frame_field_flag;
++    uint8_t     direct_8x8_inference_flag;
++    uint8_t     frame_cropping_flag;
++    uint32_t    frame_crop_left_offset;
++    uint32_t    frame_crop_right_offset;
++    uint32_t    frame_crop_top_offset;
++    uint32_t    frame_crop_bottom_offset;
++    uint8_t     vui_parameters_present_flag;
++    // TODO: add vui_parameters, rtbsp_trailing_bits
++            
++};
++
++struct pic_parameter_set_rbsp {
++    uint32_t    pic_parameter_set_id;
++    uint32_t    seq_parameter_set_id;
++    uint8_t     entropy_coding_mode_flag;
++    uint8_t     pic_order_present_flag;
++    
++    /* we ignore further data, because it's not needed
++        for packetization */
++};
++
++struct slice_header {
++    uint32_t    first_mb_in_slice;
++    uint32_t    slice_type;
++    uint32_t    pic_parameter_set_id;
++    uint32_t    frame_num;
++    int8_t      field_pic_flag;
++    int8_t      bottom_field_flag;
++    uint32_t    idr_pic_id;
++    
++    /* sps->pic_order_cnt_type == 0 */
++    uint32_t    pic_order_cnt_lsb;
++    int32_t     delta_pic_order_cnt_bottom;
++    /* sps->pic_order_cnt_type == 1 && !sps->delta_pic_order_always_zero_flag */
++    int32_t     delta_pic_order_cnt[2];
++    
++    /* not needed for packetizing */
++    /*int32_t     redundant_pic_cnt;
++    uint8_t     direct_spatial_mv_pred_flag;
++    uint8_t     num_ref_idx_active_override_flag;
++    uint32_t    num_ref_idx_l0_active_minus1;
++    uint32_t    num_ref_idx_l1_active_minus1;*/
++    
++};
++
++
++#define MAX_FRAME_SIZE  1024*1024
++
++struct nal_parser {
++    uint8_t buf[MAX_FRAME_SIZE];
++    int buf_len;
++    int found_sps;
++    int found_pps;
++    int last_nal_res;
++    int field; // 0=top, 1=bottom, -1=both
++    int slice;
++    int have_top;
++    int have_frame;
++    struct nal_unit *nal0;
++    struct nal_unit *nal1;
++    struct nal_unit *current_nal;
++    struct nal_unit *last_nal;
++};
++
++int parse_nal(uint8_t *buf, int buf_len, struct nal_parser *parser);
++
++int seek_for_nal(uint8_t *buf, int buf_len);
++
++struct nal_parser* init_parser();
++void free_parser(struct nal_parser *parser);
++int parse_frame(struct nal_parser *parser, uint8_t *inbuf, int inbuf_len,
++                uint8_t **ret_buf, int *ret_len);
++
++#endif
+diff -r 28563835c714 src/libw32dll/w32codec.c
+--- a/src/libw32dll/w32codec.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/w32codec.c	Sat Jun 30 14:21:22 2007 +0200
+@@ -30,6 +30,12 @@
+ #include <inttypes.h>
+ #include <string.h>
+ 
++#include <unistd.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++
++
+ #include "wine/msacm.h"
+ #include "wine/driver.h"
+ #include "wine/avifmt.h"
+@@ -61,11 +67,19 @@
+ 
+ #include "common.c"
+ 
++#include "nal_parser.h"
++
+ static GUID CLSID_Voxware =
+ {
+      0x73f7a062, 0x8829, 0x11d1,
+      { 0xb5, 0x50, 0x00, 0x60, 0x97, 0x24, 0x2d, 0x8d }
+ };
++
++static GUID coreavc_clsid =
++{
++    0x09571a4b, 0xf1fe, 0x4c60, 
++    { 0x97, 0x60, 0xde, 0x6d, 0x31, 0x0c, 0x7c, 0x31 }
++};
+     
+ static GUID CLSID_Acelp =
+ {
+@@ -125,6 +139,12 @@ static GUID wmav_clsid =
+ {
+ 	0x874131cb, 0x4ecc, 0x443b,
+         { 0x89, 0x48, 0x74, 0x6b, 0x89, 0x59, 0x5d, 0x20 }
++};
++
++static GUID wmvvc1_clsid =
++{
++	0xc9bfbccf, 0xe60e, 0x4588,
++	{ 0xa3, 0xdf, 0x5a, 0x03, 0xb1, 0xfd, 0x95, 0x85 }
+ };
+ 
+ 
+@@ -172,6 +192,16 @@ typedef struct w32v_decoder_s {
+   int               skipframes;  
+   
+   ldt_fs_t *ldt_fs;
++  
++  /* extradata */
++  uint8_t    *extradata;
++  int         extradata_size;
++  
++  /* Parser for H264 */
++  struct nal_parser  *parser;
++  int64_t last_pts;
++  int64_t last_buf_pts;
++  int64_t pts_buffer[5];
+ } w32v_decoder_t;
+ 
+ typedef struct {
+@@ -330,6 +360,8 @@ static int get_vids_codec_n_name(w32v_de
+   case BUF_VIDEO_MSS1:
+   case BUF_VIDEO_TSCC:
+   case BUF_VIDEO_UCOD:
++  case BUF_VIDEO_H264:
++  case BUF_VIDEO_WVC1:
+     return 1;
+   case BUF_VIDEO_WMV7:
+   case BUF_VIDEO_WMV8:
+@@ -541,7 +573,24 @@ static char* get_vids_codec_name(w32v_de
+       "ClearVideo (win32)");
+     return "clrviddd.dll";    
+   
+-  }
++  case BUF_VIDEO_H264:
++    this->driver_type = DRIVER_DS;
++    this->guid=&coreavc_clsid;
++    this->yuv_supported=1;
++    _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC, 
++                          "CoreAVC DShow H264 decoder for x86 (win32)");
++    return "CoreAVCDecoder.ax";
++
++  case BUF_VIDEO_WVC1:
++    this->driver_type = DRIVER_DMO;
++    this->guid=&wmvvc1_clsid;
++    this->yuv_supported=1;
++    _x_meta_info_set_utf8(this->stream, XINE_META_INFO_VIDEOCODEC, 
++                          "Windows Media Video (VC-1) Advanced Profile Decoder");
++    return "wvc1dmod.dll";
++  }
++
++     
+ 
+   xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG,
+ 	   "w32codec: this didn't happen: unknown video buf type %08x\n", buf_type);
+@@ -679,8 +728,18 @@ static void w32v_init_ds_dmo_codec (w32v
+     this->bih->biCompression = mmioFOURCC('d','v','s','d');
+ 
+   if( this->driver_type == DRIVER_DS ) {
++    BITMAPINFOHEADER  *mbih;
++    if(this->extradata_size>0) {
++      mbih = malloc(this->bih->biSize + this->extradata_size);
++      memcpy(mbih, this->bih, this->bih->biSize);
++      memcpy(((uint8_t*)mbih)+this->bih->biSize, this->extradata, this->extradata_size);
++      mbih->biSize += this->extradata_size;
++    }
++    else
++      mbih = this->bih;
++    
+     this->ds_dec = DS_VideoDecoder_Open(win32_codec_name, this->guid,
+-                                          this->bih, this->flipped, 0);
++                                          mbih, this->flipped, 0);
+     
+     if(!this->ds_dec){
+       xine_log (this->stream->xine, XINE_LOG_MSG,
+@@ -705,11 +764,12 @@ static void w32v_init_ds_dmo_codec (w32v
+   outfmt = IMGFMT_15RGB;
+   if (this->yuv_supported) {
+     vo_cap = this->stream->video_out->get_capabilities (this->stream->video_out);
+-    if (vo_cap & VO_CAP_YUY2)
++    if (vo_cap & VO_CAP_YUY2) {
+       outfmt = IMGFMT_YUY2;
+-  }
+-
+-  if(outfmt==IMGFMT_YUY2 || outfmt==IMGFMT_15RGB )
++    }
++  }
++
++  if(outfmt==IMGFMT_YUY2 || outfmt==IMGFMT_15RGB)
+     this->o_bih.biBitCount=16;
+   else
+     this->o_bih.biBitCount=outfmt&0xFF;
+@@ -728,6 +788,10 @@ static void w32v_init_ds_dmo_codec (w32v
+   else 
+     this->o_bih.biCompression = 0;
+       
++  if ( this->img_buffer )
++    free (this->img_buffer);
++  this->img_buffer = malloc (this->o_bih.biSizeImage);
++
+   if( this->driver_type == DRIVER_DS )
+     DS_VideoDecoder_SetDestFmt(this->ds_dec, this->o_bih.biBitCount, this->o_bih.biCompression);
+   else
+@@ -743,10 +807,6 @@ static void w32v_init_ds_dmo_codec (w32v
+   
+   this->size = 0;
+ 
+-  if ( this->img_buffer )
+-    free (this->img_buffer);
+-  this->img_buffer = malloc (this->o_bih.biSizeImage);
+-  
+   if ( this->buf )
+     free (this->buf);
+   this->bufsize = VIDEOBUFSIZE;
+@@ -758,6 +818,13 @@ static void w32v_init_ds_dmo_codec (w32v
+   this->decoder_ok = 1;
+ }
+ 
++/*static long long
++get_usecs(void)
++{
++    struct timeval tv;
++    gettimeofday(&tv, NULL);
++    return (long long)((tv.tv_sec * 1000000.0) + tv.tv_usec);
++}*/
+ 
+ static void w32v_decode_data (video_decoder_t *this_gen, buf_element_t *buf) {
+   w32v_decoder_t *this = (w32v_decoder_t *) this_gen;
+@@ -767,6 +834,12 @@ static void w32v_decode_data (video_deco
+   
+   if (buf->decoder_flags & BUF_FLAG_PREVIEW)
+     return;
++  
++  if (buf->type == BUF_CONTROL_DISCONTINUITY) {
++    memset(this->pts_buffer, 0, sizeof(this->pts_buffer));
++    this->last_pts = 0;
++    return;
++  }
+   
+   if (buf->decoder_flags & BUF_FLAG_FRAMERATE) {
+     this->video_step = buf->decoder_info[0];
+@@ -775,9 +848,23 @@ static void w32v_decode_data (video_deco
+     lprintf ("video_step is %lld\n", this->video_step);
+   }
+   
++  if (buf->decoder_flags & BUF_FLAG_SPECIAL) {
++    /* store extradata */
++    if (buf->decoder_info[1] == BUF_SPECIAL_DECODER_CONFIG &&
++        !this->extradata_size)
++    {
++      printf("BUF_SPECIAL_DECODER_CONFIG\n");
++      this->extradata_size = buf->decoder_info[2];
++      this->extradata = xine_xmalloc(buf->decoder_info[2]);
++      memcpy(this->extradata, buf->decoder_info_ptr[2],
++              buf->decoder_info[2]);
++      printf("Extradata: %d\n", this->extradata_size);
++    }
++  }
++
+   if (buf->decoder_flags & BUF_FLAG_STDHEADER) {
+     int num_decoders;
+-
++    printf("INIT\n");
+     if ( buf->type & 0xff )
+       return;
+     
+@@ -786,8 +873,16 @@ static void w32v_decode_data (video_deco
+     /* init package containing bih */
+     if( this->bih )
+       free( this->bih );
++
+     this->bih = malloc(buf->size);
+     memcpy ( this->bih, buf->content, buf->size );
++    if (this->bih->biSize > sizeof(xine_bmiheader)) {
++      this->extradata_size = this->bih->biSize - sizeof(xine_bmiheader);
++        this->extradata = malloc(this->extradata_size);
++        memcpy(this->extradata, buf->content + sizeof(xine_bmiheader),
++              this->extradata_size);
++      }
++
+ 
+     this->ratio = (double)this->bih->biWidth/(double)this->bih->biHeight;
+ 
+@@ -813,6 +908,7 @@ static void w32v_decode_data (video_deco
+       }
+     }
+ 
++    memset(this->pts_buffer, 0, sizeof(this->pts_buffer));
+     if( !this->decoder_ok ) {
+       xine_log (this->stream->xine, XINE_LOG_MSG,
+ 		_("w32codec: decoder failed to start. Is '%s' installed?\n"), 
+@@ -831,6 +927,13 @@ static void w32v_decode_data (video_deco
+ 
+     lprintf ("processing packet ...\n"); 
+ 
++    if(buf->type == BUF_VIDEO_H264 && !this->parser) {
++      /* initialize H264 parser */
++      if(this->extradata_size == 0) {
++        this->parser = init_parser();
++      }
++    }
++
+     if( (int) buf->size <= 0 )
+         return;
+        
+@@ -847,74 +950,117 @@ static void w32v_decode_data (video_deco
+       this->buf = realloc( this->buf, this->bufsize );
+     }
+     
+-    xine_fast_memcpy (&this->buf[this->size], buf->content, buf->size);
++    if(buf->size>0)
++        xine_fast_memcpy (&this->buf[this->size], buf->content, buf->size);
+ 
+     this->size += buf->size;
+ 
+-    if (buf->decoder_flags & BUF_FLAG_FRAME_END)  {
++    if (buf->decoder_flags & BUF_FLAG_FRAME_END || this->parser)  {
+ 
+       HRESULT     ret = 0;
+       int         flags;
+-      vo_frame_t *img;
++      vo_frame_t *img = NULL;
+       uint8_t    *img_buffer = this->img_buffer;
+ 
+       Check_FS_Segment(this->ldt_fs);
+ 
+       /* decoder video frame */
+-
+-      this->bih->biSizeImage = this->size;
+-     
+-      img = this->stream->video_out->get_frame (this->stream->video_out,
+-					this->bih->biWidth, 
+-					this->bih->biHeight, 
+-					this->ratio, 
+-					IMGFMT_YUY2,
+-					VO_BOTH_FIELDS);
+-
+-      img->duration = this->video_step;
+-
+-      lprintf ("frame duration is %lld\n", this->video_step);
+-
+-      if (this->outfmt==IMGFMT_YUY2)
+-         img_buffer = img->base[0];
++      while(this->size > 0) {
++        /* av parser for H264 */
++        uint8_t *buf_ptr = NULL;
++        int buf_len = 0;
++        if(this->parser) {
++          int len = parse_frame(this->parser, this->buf, this->size,
++                                  &buf_ptr, &buf_len);
++          this->size -= len;
++          if(this->size > 0)
++            //memmove(this->buf, &this->buf[len], this->size);
++            xine_fast_memcpy(this->buf, &this->buf[len], this->size);
++        
++          if(buf_len <= 0)
++            continue;
++          if(buf->pts != this->last_buf_pts) {
++            this->last_buf_pts = buf->pts;
++            int i;
++            for(i=0; i<5; i++) {
++              if(this->pts_buffer[i] == 0) {
++                this->pts_buffer[i] = buf->pts;
++                break;
++                if(i==4)
++                  printf("ERROR PTS BUFFER FILLED\n");
++              }
++            }
++          }
++        }
++      
++        int field = VO_BOTH_FIELDS | VO_INTERLACED_FLAG;
+          
+-      flags = 0;
+-      if( !(buf->decoder_flags & BUF_FLAG_KEYFRAME) )
+-        flags |= ICDECOMPRESS_NOTKEYFRAME;
+-      if( this->skipframes )
+-        flags |= ICDECOMPRESS_HURRYUP|ICDECOMPRESS_PREROL;
+-
+-      if( this->skipframes && (buf->type & ~0xff) != BUF_VIDEO_IV32 )
+-        img_buffer = NULL;
+-              
+-      pthread_mutex_lock(&win32_codec_mutex);
+-      if( this->driver_type == DRIVER_STD )
+-        ret = (!this->ex_functions)
+-              ?ICDecompress(this->hic, flags,
+-			    this->bih, this->buf, &this->o_bih, 
+-			    img_buffer)
+-              :ICDecompressEx(this->hic, flags,
+-			    this->bih, this->buf, &this->o_bih,
+-			    img_buffer); 
+-      else if( this->driver_type == DRIVER_DS ) {
+-        ret = DS_VideoDecoder_DecodeInternal(this->ds_dec, this->buf, this->size,
+-                            buf->decoder_flags & BUF_FLAG_KEYFRAME,
+-                            img_buffer);
+-      } else if( this->driver_type == DRIVER_DMO ) {
+-        ret = DMO_VideoDecoder_DecodeInternal(this->dmo_dec, this->buf, this->size,
+-                            1,
+-                            img_buffer);
+-      }
+-      pthread_mutex_unlock(&win32_codec_mutex);
+-                         
+-      if (!this->skipframes) {
+-        if (this->outfmt==IMGFMT_YUY2) {
+-	  /* already decoded into YUY2 format by DLL */
+-	  /*
+-	  xine_fast_memcpy(img->base[0], this->img_buffer,
+-	                   this->bih.biHeight*this->bih.biWidth*2);
+-	  */
+-        } else {
++        this->bih->biSizeImage = this->size;
++        
++        flags = 0;
++        if( !(buf->decoder_flags & BUF_FLAG_KEYFRAME) )
++          flags |= ICDECOMPRESS_NOTKEYFRAME;
++        if( this->skipframes )
++          flags |= ICDECOMPRESS_HURRYUP|ICDECOMPRESS_PREROL;
++
++        pthread_mutex_lock(&win32_codec_mutex);
++        
++        if(!img) {
++        img = this->stream->video_out->get_frame (this->stream->video_out,
++              this->bih->biWidth, 
++              this->bih->biHeight, 
++              this->ratio, 
++              IMGFMT_YUY2,
++              field);
++        }
++
++        if( this->skipframes && (buf->type & ~0xff) != BUF_VIDEO_IV32 )
++          img_buffer = NULL;
++        else
++          img_buffer = this->img_buffer;
++
++        if(this->outfmt==IMGFMT_YUY2)
++          img_buffer = img->base[0];
++
++        if( this->driver_type == DRIVER_STD )
++          ret = (!this->ex_functions)
++                ?ICDecompress(this->hic, flags,
++			      this->bih, this->buf, &this->o_bih, 
++			      img_buffer)
++                :ICDecompressEx(this->hic, flags,
++			      this->bih, this->buf, &this->o_bih,
++			      img_buffer); 
++        else if( this->driver_type == DRIVER_DS ) {
++          if(this->parser) {
++            ret = DS_VideoDecoder_DecodeInternal(this->ds_dec, buf_ptr, buf_len,
++                buf->decoder_flags,
++                img_buffer);
++
++            free(buf_ptr);
++          } else {
++            ret = DS_VideoDecoder_DecodeInternal(this->ds_dec, this->buf, this->size,
++                                buf->decoder_flags & BUF_FLAG_KEYFRAME,
++                                img_buffer);
++          }
++        } else if( this->driver_type == DRIVER_DMO ) {
++          ret = DMO_VideoDecoder_DecodeInternal(this->dmo_dec, this->buf, this->size,
++                              1,
++                              img_buffer);
++        }
++        pthread_mutex_unlock(&win32_codec_mutex);
++          
++        if(ret==1) {
++//printf("no frame\n");
++          //img->free(img);
++          continue;
++        }
++        img->duration = this->video_step;
++img->duration = 3600;
++
++        lprintf ("frame duration is %lld\n", this->video_step);
++        
++      /* convert rgb to yuv if needed */
++      if (!this->skipframes && this->outfmt!=IMGFMT_YUY2) {
+ 	  /* now, convert rgb to yuv */
+ 	  int row, col;
+ #if	HAS_SLOW_MULT
+@@ -963,10 +1109,40 @@ static void w32v_decode_data (video_deco
+ 	      //printf("r %02x g %02x b %02x y %02x u %02x v %02x\n",r,g,b,y,u,v);
+ 	    }
+ 	  }
+-        }
++      }
++
++      if(this->parser && buf->pts == 0) {
++        printf("reset pts\n");
++        memset(this->pts_buffer, 0, sizeof(this->pts_buffer));
+       }
+       
+-      img->pts = buf->pts;
++/*      if(this->last_pts == 0 || buf->pts == 0) {
++        printf("reset pts\n");
++        memset(this->pts_buffer, 0, sizeof(this->pts_buffer));
++        this->last_pts = buf->pts;
++      }
++      else
++        this->last_pts += 3600;*/
++
++      if(this->parser) {
++        int i, clear = -1;
++        img->pts = 0;
++        for(i=0; i<5; i++) {
++          if(this->pts_buffer[i] != 0) {
++            if(img->pts == 0 || img->pts > this->pts_buffer[i]) {
++              img->pts = this->pts_buffer[i];
++              clear = i;
++            }
++          }
++        }
++        if(clear>-1)
++          this->pts_buffer[clear] = 0;
++        this->last_pts = img->pts;
++        //img->pts = this->last_pts;
++      }
++      else
++        img->pts = buf->pts;
++
+       if (ret || this->skipframes) {
+         if (!this->skipframes)
+ 	  xprintf(this->stream->xine, XINE_VERBOSITY_DEBUG,
+@@ -985,8 +1161,14 @@ static void w32v_decode_data (video_deco
+       if (this->skipframes < 0)
+         this->skipframes = 0;
+       img->free(img);
+-
+-      this->size = 0;
++      img = NULL;
++
++      if(!this->parser)
++        this->size = 0;
++    }
++    if(img)
++      img->free(img);
++
+     }
+ 
+     /* printf ("w32codec: processing packet done\n"); */
+@@ -1019,6 +1201,8 @@ static void w32v_reset (video_decoder_t 
+ }
+ 
+ static void w32v_discontinuity (video_decoder_t *this_gen) {
++  w32v_decoder_t *this = (w32v_decoder_t *) this_gen;
++  memset(this->pts_buffer, 0, sizeof(this->pts_buffer));
+ }
+ 
+ 
+@@ -1042,7 +1226,6 @@ static void w32v_dispose (video_decoder_
+     this->dmo_dec = NULL;
+   }
+   Restore_LDT_Keeper( this->ldt_fs );
+-  pthread_mutex_unlock(&win32_codec_mutex);
+ 
+   if ( this->img_buffer ) {
+     free (this->img_buffer);
+@@ -1063,7 +1246,13 @@ static void w32v_dispose (video_decoder_
+     this->decoder_ok = 0;
+     this->stream->video_out->close(this->stream->video_out, this->stream);
+   }
+-
++  
++  if(this->parser) {
++    free_parser(this->parser);
++    this->parser = NULL;
++  }
++  pthread_mutex_unlock(&win32_codec_mutex);
++  
+   free (this);
+ }
+ 
+@@ -1183,7 +1372,8 @@ static int w32a_init_audio (w32a_decoder
+ 
+   this->output_open = this->stream->audio_out->open( this->stream->audio_out, this->stream,
+ 					      16, in_fmt->nSamplesPerSec, 
+-					      _x_ao_channels2mode(in_fmt->nChannels));
++					      (in_fmt->nChannels >= 2) ? AO_CAP_MODE_STEREO : AO_CAP_MODE_MONO);
++//					      _x_ao_channels2mode(in_fmt->nChannels));
+   if (!this->output_open) {
+     xprintf(this->stream->xine, XINE_VERBOSITY_DEBUG,
+ 	    "w32codec: (ACM_Decoder) Cannot open audio output device\n");
+@@ -1563,6 +1753,11 @@ static video_decoder_t *open_video_decod
+ 
+   this->stream      = stream;
+   this->decoder_ok  = 0;
++  
++  this->parser = NULL;
++  this->last_pts = 0;
++  this->last_buf_pts = 0;
++  memset(this->pts_buffer, 0x00, sizeof(this->pts_buffer));
+ 
+   return &this->video_decoder;
+ }
+@@ -1680,9 +1875,10 @@ static uint32_t video_types[] = {
+   BUF_VIDEO_IV50, BUF_VIDEO_IV41, BUF_VIDEO_IV32, BUF_VIDEO_IV31,
+   BUF_VIDEO_CINEPAK, /* BUF_VIDEO_ATIVCR1, */
+   BUF_VIDEO_ATIVCR2, BUF_VIDEO_I263, BUF_VIDEO_MSVC,
+-  BUF_VIDEO_DV, BUF_VIDEO_WMV7, BUF_VIDEO_WMV8, BUF_VIDEO_WMV9, 
++  /*BUF_VIDEO_DV,*/ BUF_VIDEO_WMV7, BUF_VIDEO_WMV8, BUF_VIDEO_WMV9, 
+   BUF_VIDEO_VP31, BUF_VIDEO_MSS1, BUF_VIDEO_TSCC, BUF_VIDEO_UCOD,
+-  BUF_VIDEO_VP4, BUF_VIDEO_VP5, BUF_VIDEO_VP6,
++  BUF_VIDEO_VP4, BUF_VIDEO_VP5, BUF_VIDEO_VP6, BUF_VIDEO_H264, 
++  BUF_VIDEO_WVC1,
+   0
+  };
+ 
+diff -r 28563835c714 src/libw32dll/wine/ext.c
+--- a/src/libw32dll/wine/ext.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/wine/ext.c	Wed Apr 18 10:55:01 2007 +0200
+@@ -586,9 +586,9 @@ INT WINAPI WideCharToMultiByte(UINT code
+     {
+     for(i=0; i<srclen; i++)
+     {
+-	src++;
+     	if(*src==0)
+ 	    return i+1;
++        src++;
+     }
+ 	return srclen+1;
+     }
+@@ -597,17 +597,30 @@ INT WINAPI WideCharToMultiByte(UINT code
+     for(i=0; i<min(srclen, destlen); i++)
+     {
+ 	*dest=(char)*src;
+-	dest++;
+-	src++;
+ 	if(*src==0)
+ 	    return i+1;
++        dest++;
++        src++;
+     }
+     return min(srclen, destlen);
+ }
+ INT WINAPI MultiByteToWideChar(UINT codepage,DWORD flags, LPCSTR src, INT srclen,
+     LPWSTR dest, INT destlen)
+ {
+-    return 0;
++    int i;
++    if(src==0)
++        return 0;
++    if ((srclen==-1)&&(dest==0)) return 0;
++    if(srclen==-1){srclen=0; while(src[srclen++]);}
++    for(i=0; i<min(srclen, destlen); i++)
++    {
++        *dest=(WCHAR)*src;
++        if(*src==0)
++            return i+1;
++        dest++;
++        src++;
++    }
++    return min(srclen, destlen);
+ }
+ HANDLE WINAPI OpenFileMappingA(DWORD access, WIN_BOOL prot, LPCSTR name)
+ {
+diff -r 28563835c714 src/libw32dll/wine/pe_image.c
+--- a/src/libw32dll/wine/pe_image.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/wine/pe_image.c	Wed Apr 18 12:25:19 2007 +0200
+@@ -906,6 +906,22 @@ static void extend_stack_for_dll_alloca(
+ #endif
+ }
+ 
++#include <signal.h>
++static void wine_sighandler(int x)
++{
++    __asm__ ("movl 68(%esp), %eax\n\t"
++             "pushl %eax\n\t"
++             "subl $12, %esp\n\t"
++             "movl %esp, %eax\n\t"
++             "pushl %eax\n\t"
++             "pushl %eax\n\t"
++             "movl %fs:0x0, %eax\n\t"
++             "movl 4(%eax),%eax\n\t"
++             "call *%eax\n\t"
++             "movl %ebp, %esp\n\t");
++    return;
++}
++
+ /* Called if the library is loaded or freed.
+  * NOTE: if a thread attaches a DLL, the current thread will only do
+  * DLL_PROCESS_ATTACH. Only new created threads do DLL_THREAD_ATTACH
+@@ -947,7 +963,9 @@ WIN_BOOL PE_InitDLL( WINE_MODREF *wm, DW
+ 	}	
+ 	TRACE("for %s\n", wm->filename);
+ 	extend_stack_for_dll_alloca();
++        void *oldsig = signal(SIGSEGV, wine_sighandler);
+         retv = entry( wm->module, type, lpReserved );
++        signal(SIGSEGV, oldsig);
+     }
+ 
+     return retv;
+diff -r 28563835c714 src/libw32dll/wine/win32.c
+--- a/src/libw32dll/wine/win32.c	Tue Apr 17 23:45:27 2007 +0100
++++ b/src/libw32dll/wine/win32.c	Sat Jun 30 14:21:52 2007 +0200
+@@ -212,8 +212,8 @@ static inline void XINE_FORMAT_PRINTF(1,
+ 	va_list va;
+ 	
+ 	va_start(va, fmt);
+-//	vprintf(fmt, va);
+-	mp_dbg(MSGT_WIN32, MSGL_DBG3, fmt, va);
++	vprintf(fmt, va);
++//	mp_dbg(MSGT_WIN32, MSGL_DBG3, fmt, va);
+ 	va_end(va);
+     }
+ #endif
+@@ -443,8 +443,9 @@ static int my_release(void* memory)
+     alccnt--;
+ 
+     /* xine: mutex must be unlocked on entrance of pthread_mutex_destroy */
++    if (last_alloc)
+     pthread_mutex_unlock(&memmut);
+-    if (!last_alloc)
++    else
+ 	pthread_mutex_destroy(&memmut);
+ 
+     //if (alccnt < 40000) printf("MY_RELEASE: %p\t%ld    (%d)\n", header, header->size, alccnt);
+@@ -533,6 +534,13 @@ static HMODULE WINAPI expGetDriverModule
+ #define	MODULE_HANDLE_ddraw	((HMODULE)0x123)
+ #define	MODULE_HANDLE_advapi32	((HMODULE)0x124)
+ #endif
++#define MODULE_HANDLE_comdlg32  ((HMODULE)0x125)
++#define MODULE_HANDLE_msvcrt    ((HMODULE)0x126)
++#define MODULE_HANDLE_ole32     ((HMODULE)0x127)
++#define MODULE_HANDLE_winmm     ((HMODULE)0x128)
++#define MODULE_HANDLE_version   ((HMODULE)0x129)
++#define MODULE_HANDLE_gdi32 ((HMODULE)0x130)
++#define MODULE_HANDLE_oleaut32  ((HMODULE)0x131)
+ 
+ static HMODULE WINAPI expGetModuleHandleA(const char* name)
+ {
+@@ -540,7 +548,7 @@ static HMODULE WINAPI expGetModuleHandle
+     HMODULE result;
+     if(!name)
+ #ifdef QTX
+-	result=1;
++    result=0x10000000;
+ #else
+ 	result=0;
+ #endif
+@@ -559,9 +567,18 @@ static HMODULE WINAPI expGetModuleHandle
+ 	if(name && strcasecmp(name, "user32")==0)
+ 	    result=MODULE_HANDLE_user32;
+ #endif
++    if(name && (strcasecmp(name, "oleaut32")==0 || !strcasecmp(name, "oleaut32.dll")))
++        result=MODULE_HANDLE_oleaut32;
+     }
+     dbgprintf("GetModuleHandleA('%s') => 0x%x\n", name, result);
+     return result;
++}
++
++static int WINAPI expVirtualProtect(void *ptr, int size,  int prot, int *oldprot)
++{
++   dbgprintf("VirtualProtect(%x, %d, %d, %x)\n", ptr, size, prot, oldprot);
++   *oldprot = prot;
++   return 1;
+ }
+ 
+ static void* WINAPI expCreateThread(void* pSecAttr, long dwStackSize,
+@@ -761,12 +778,24 @@ static void* WINAPI expWaitForSingleObje
+     while (pp && (pp->pm != ml->pm))
+ 	pp = pp->prev;
+     if (!pp) {
+-	dbgprintf("WaitForSingleObject: NotFound\n");
+-	return (void*)ret;
+-    }
+-
++       pthread_t *thread = (pthread_t*)object;
++       th_list *th = list;
++       int rc;
++       while(th && (th->thread != (void *)thread))
++            th = th->prev;
++       if (!th) {
++        dbgprintf("WaitForSingleObject: NotFound\n");
++        return (void*)ret;
++       }
++       rc = pthread_join(*thread, NULL);
++       if (! rc) {
++        dbgprintf("WaitForSingleObject: Thread exited\n");
++        return (void *)WAIT_OBJECT_0;
++       }
++       dbgprintf("WaitForSingleObject: Thread failed to exit: %d\n", rc);
++       return (void *)ret;
++    }
+     pthread_mutex_lock(ml->pm);
+-
+     switch(ml->type) {
+     case 0: /* Event */
+ 	if (duration == 0) { /* Check Only */
+@@ -795,18 +824,49 @@ static void* WINAPI expWaitForSingleObje
+ 	}
+ 	break;
+     case 1:  /* Semaphore */
+-	if (duration == 0) {
+-	    if(ml->semaphore==0) ret = WAIT_FAILED;
+-	    else {
+-		ml->semaphore++;
+-		ret = WAIT_OBJECT_0;
+-	    }
+-	}
+-	if (duration == -1) {
+-	    if (ml->semaphore==0)
+-		pthread_cond_wait(ml->pc,ml->pm);
+-	    ml->semaphore--;
+-	}
++    if(ml->semaphore != 0) {
++        ret = WAIT_OBJECT_0;
++        ml->semaphore--;
++        break;
++    }
++    if (duration == 0) {
++       ret = WAIT_FAILED;
++       break;
++    }
++    if (duration == -1) {
++        while(ml->semaphore==0) {
++          pthread_cond_wait(ml->pc,ml->pm);
++        }
++        ml->semaphore--;
++        ret = WAIT_OBJECT_0;
++    } else {
++        int rc = 0;
++        struct timespec tm;
++        struct timeb tp;
++        long sec, millisec;
++
++        sec = duration / 1000;
++        millisec = duration % 1000;
++        ftime( &tp );
++        tp.time += sec;
++        tp.millitm += millisec;
++        if( tp.millitm > 999 ) {
++            tp.millitm -= 1000;
++            tp.time++;
++        }
++        tm.tv_sec = tp.time;
++        tm.tv_nsec = tp.millitm * 1000000 ;
++        while(ml->semaphore==0 && !rc) {
++            if(rc = pthread_cond_timedwait(ml->pc,ml->pm, &tm) == ETIMEDOUT)
++                break;
++        }
++        if(rc == ETIMEDOUT) {
++            ret = WAIT_TIMEOUT;
++        } else if (rc == 0) {
++            ml->semaphore--;
++            ret = WAIT_OBJECT_0;
++        }
++    }
+ 	break;
+     }
+     pthread_mutex_unlock(ml->pm);
+@@ -842,33 +902,6 @@ static void WINAPI expExitThread(int ret
+ {
+     dbgprintf("ExitThread(%d)\n", retcode);
+     pthread_exit(&retcode);
+-}
+-
+-static HANDLE WINAPI expCreateMutexA(void *pSecAttr,
+-		    char bInitialOwner, const char *name)
+-{
+-    HANDLE mlist = (HANDLE)expCreateEventA(pSecAttr, 0, 0, name);
+-    
+-    if (name)
+-	dbgprintf("CreateMutexA(%p, %d, '%s') => 0x%x\n",
+-	    pSecAttr, bInitialOwner, name, mlist);
+-    else
+-	dbgprintf("CreateMutexA(%p, %d, NULL) => 0x%x\n",
+-	    pSecAttr, bInitialOwner, mlist);
+-#ifndef QTX
+-    /* 10l to QTX, if CreateMutex returns a real mutex, WaitForSingleObject
+-       waits for ever, else it works ;) */
+-    return mlist;
+-#else
+-    return 0;
+-#endif
+-}
+-
+-static int WINAPI expReleaseMutex(HANDLE hMutex)
+-{
+-    dbgprintf("ReleaseMutex(%x) => 1\n", hMutex);
+-    /* FIXME:XXX !! not yet implemented */
+-    return 1;
+ }
+ #endif
+ 
+@@ -912,8 +945,8 @@ static void WINAPI expGetSystemInfo(SYST
+ 
+     /* FIXME: better values for the two entries below... */
+     cachedsi.lpMinimumApplicationAddress	= (void *)0x00000000;
+-    cachedsi.lpMaximumApplicationAddress	= (void *)0x7FFFFFFF;
+-    cachedsi.dwActiveProcessorMask		= 1;
++    cachedsi.lpMaximumApplicationAddress	= (void *)0x7FFEFFFF;
++    cachedsi.dwActiveProcessorMask		= 0;
+     cachedsi.dwNumberOfProcessors		= 1;
+     cachedsi.dwProcessorType		= PROCESSOR_INTEL_386;
+     cachedsi.dwAllocationGranularity	= 0x10000;
+@@ -1119,10 +1152,13 @@ static void WINAPI expGetSystemInfo(SYST
+ 	 *			CreateThread ...etc..
+ 	 *
+ 	 */
+-	cachedsi.dwNumberOfProcessors=1;
++	//cachedsi.dwNumberOfProcessors=1;
+     }
+ #endif /* __linux__ */
+     cache = 1;
++
++    if (!cachedsi.dwActiveProcessorMask)
++        cachedsi.dwActiveProcessorMask = (1 << cachedsi.dwNumberOfProcessors) - 1;
+     memcpy(si,&cachedsi,sizeof(*si));
+     DumpSystemInfo(si);
+ }
+@@ -1460,6 +1496,16 @@ static int WINAPI expTlsAlloc()
+     return -1;
+ }
+ 
++static void * WINAPI expEncodePointer(void *value)
++{
++    return (void *)((long)value ^ getpid());
++}
++
++static void * WINAPI expDecodePointer(void *value)
++{
++    return (void *)((long)value ^ getpid());
++}
++
+ //static int WINAPI expTlsSetValue(DWORD index, void* value)
+ static int WINAPI expTlsSetValue(int index, void* value)
+ {
+@@ -1695,6 +1741,11 @@ static int WINAPI expLoadStringA(long in
+     return result;
+ }
+ 
++static int WINAPI expLoadStringW(long instance, long  id, void* buf, long size)
++{
++    return expLoadStringA(instance, id, buf, size);
++}
++
+ static long WINAPI expMultiByteToWideChar(long v1, long v2, char* s1, long siz1, short* s2, int siz2)
+ {
+ // #warning FIXME
+@@ -1724,11 +1775,32 @@ static long WINAPI expMultiByteToWideCha
+ 		  v1, v2, siz1, s2, siz2, result);
+     return result;
+ }
++
+ static void wch_print(const short* str)
+ {
+     dbgprintf("  src: ");
+     while(*str)dbgprintf("%c", *str++);
+     dbgprintf("\n");
++}
++
++static long WINAPI expGetVersionExW(OSVERSIONINFOW* c)
++{
++    dbgprintf("GetVersionExW(0x%x) => 1\n");
++    c->dwOSVersionInfoSize=sizeof(*c);
++    c->dwMajorVersion=5;
++    c->dwMinorVersion=0;
++    c->dwBuildNumber=0x5000457;
++#if 1
++    // leave it here for testing win9x-only codecs
++    c->dwPlatformId=VER_PLATFORM_WIN32_WINDOWS;
++    strcpy(c->szCSDVersion, " B");
++#else
++    c->dwPlatformId=VER_PLATFORM_WIN32_NT; // let's not make DLL assume that it can read CR* registers
++    strcpy(c->szCSDVersion, "Service Pack 3");
++#endif
++    dbgprintf("  Major version: 5\n  Minor version: 0\n  Build number: 0x5000457\n"
++            "  Platform Id: VER_PLATFORM_WIN32_NT\n Version string: 'Service Pack 3'\n");
++    return 1;
+ }
+ static long WINAPI expWideCharToMultiByte(long v1, long v2, short* s1, long siz1,
+ 					  char* s2, int siz2, char* c3, int* siz3)
+@@ -1840,7 +1912,7 @@ static long WINAPI expReleaseSemaphore(l
+ 
+     pthread_mutex_lock(ml->pm);
+     if (prev_count != 0) *prev_count = ml->semaphore;
+-    if (ml->semaphore == 0) pthread_cond_signal(ml->pc);
++    if (ml->semaphore == 0) pthread_cond_broadcast(ml->pc);
+     ml->semaphore += increment;
+     pthread_mutex_unlock(ml->pm);
+     dbgprintf("ReleaseSemaphore(semaphore 0x%lx, increment %ld, prev_count %p) => 1\n",
+@@ -1848,6 +1920,28 @@ static long WINAPI expReleaseSemaphore(l
+     return 1;
+ }
+ 
++#ifdef QTX
++static HANDLE WINAPI expCreateMutexA(void *pSecAttr,
++           char bInitialOwner, const char *name)
++{
++    HANDLE mlist = expCreateSemaphoreA(pSecAttr, bInitialOwner ? 0 : 1, 1, name);
++    
++    if (name)
++        dbgprintf("CreateMutexA(0x%x, %d, '%s') => 0x%x\n",
++            pSecAttr, bInitialOwner, name, mlist);
++    else
++        dbgprintf("CreateMutexA(0x%x, %d, NULL) => 0x%x\n",
++            pSecAttr, bInitialOwner, mlist);
++    return mlist;
++}
++
++static int WINAPI expReleaseMutex(HANDLE hMutex)
++{
++    int ret = expReleaseSemaphore(hMutex, 1 , 0);
++    dbgprintf("ReleaseMutex(%x) => %d\n", hMutex, ret);
++    return ret;
++}
++#endif
+ 
+ static long WINAPI expRegOpenKeyExA(long key, const char* subkey, long reserved, long access, int* newkey)
+ {
+@@ -1863,6 +1957,24 @@ static long WINAPI expRegCloseKey(long k
+     dbgprintf("RegCloseKey(0x%lx) => %ld\n", key, result);
+     return result;
+ }
++
++static long WINAPI expRegQueryValueExW(long key, const char* value, int* reserved, int* type, int* data, int* count)
++{
++    char dest[256];
++    char data1[256];
++    int l;
++    long result;
++    dest[0] = 0;
++    data1[0] = 0;
++    l = WideCharToMultiByte(65001, 0x0, (LPCWSTR)value, -1, dest, 256, 0x0, 0x0);
++    result=RegQueryValueExA(key, dest, reserved, type, (int *)data1, count);
++    dbgprintf("RegQueryValueExW(key 0x%x, value %s, reserved 0x%x, data 0x%x, count 0x%x)"
++         " => 0x%x\n", key, dest, reserved, data, count, result);
++    if(data && count)dbgprintf("  read %d bytes: '%s'\n", *count, data1);
++    MultiByteToWideChar(65001, 0x0, data1, -1, data, 256);
++    return result;
++}
++
+ static long WINAPI expRegQueryValueExA(long key, const char* value, int* reserved, int* type, int* data, int* count)
+ {
+     long result=RegQueryValueExA(key, value, reserved, type, data, count);
+@@ -1871,6 +1983,15 @@ static long WINAPI expRegQueryValueExA(l
+     if(data && count)dbgprintf("  read %d bytes: '%s'\n", *count, (char *)data); /* FIXME? */
+     return result;
+ }
++
++static LONG WINAPI explstrlenW(const WCHAR* str1)
++{
++    LONG len = 0;
++    while(str1[len++]);
++    dbgprintf("strlenW(0x%x='%.50s') => %d\n", str1, str1, len-1);
++    return len-1;
++}
++
+ static long WINAPI expRegCreateKeyExA(long key, const char* name, long reserved,
+ 				      void* classs, long options, long security,
+ 				      void* sec_attr, int* newkey, int* status)
+@@ -2337,6 +2458,20 @@ static int WINAPI expLoadLibraryA(char* 
+     if (strcasecmp(name, "advapi32.dll") == 0 || strcasecmp(name, "advapi32") == 0)
+ 	return MODULE_HANDLE_advapi32;
+ #endif
++    if (strcasecmp(name, "version.dll") == 0 || strcasecmp(name, "version") == 0)
++        return MODULE_HANDLE_version;
++    if (strcasecmp(name, "gdi32.dll") == 0 || strcasecmp(name, "gdi32") == 0)
++        return MODULE_HANDLE_gdi32;
++    if (strcasecmp(name, "oleaut32.dll") == 0 || strcasecmp(name, "oleaut32") == 0)
++        return MODULE_HANDLE_oleaut32;
++    if (strcasecmp(name, "comdlg32.dll") == 0 || strcasecmp(name, "comdlg32") == 0)
++        return MODULE_HANDLE_comdlg32;
++    if (strcasecmp(name, "msvcrt.dll") == 0 || strcasecmp(name, "msvcrt") == 0)
++        return MODULE_HANDLE_msvcrt;
++    if (strcasecmp(name, "ole32.dll") == 0 || strcasecmp(name, "ole32") == 0)
++        return MODULE_HANDLE_ole32;
++    if (strcasecmp(name, "winmm.dll") == 0 || strcasecmp(name, "winmm") == 0)
++        return MODULE_HANDLE_winmm;
+ 
+     result=LoadLibraryA(name);
+     dbgprintf("Returned LoadLibraryA(%p='%s'), def_path=%s => 0x%x\n", name, name, win32_def_path, result);
+@@ -2371,10 +2506,27 @@ static void* WINAPI expGetProcAddress(HM
+     case MODULE_HANDLE_advapi32:
+ 	result=LookupExternalByName("advapi32.dll", name); break;
+ #endif
++    case MODULE_HANDLE_comdlg32:
++    result=LookupExternalByName("comdlg32.dll", name); break;
++    case MODULE_HANDLE_msvcrt:
++    result=LookupExternalByName("msvcrt.dll", name); break;
++    case MODULE_HANDLE_ole32:
++    result=LookupExternalByName("ole32.dll", name); break;
++    case MODULE_HANDLE_winmm:
++    result=LookupExternalByName("winmm.dll", name); break;
++    case MODULE_HANDLE_version:
++    result=LookupExternalByName("version.dll", name); break;
++    case MODULE_HANDLE_gdi32:
++    result=LookupExternalByName("gdi32.dll", name); break;
++    case MODULE_HANDLE_oleaut32:
++    result=LookupExternalByName("oleaut32.dll", name); break;
+     default:
+ 	result=GetProcAddress(mod, name);
+     }
++    if((unsigned int)name > 0xffff)
+     dbgprintf("GetProcAddress(0x%x, '%s') => %p\n", mod, name, result);
++    else
++        dbgprintf("GetProcAddress(0x%x, '%d') => 0x%x\n", mod, (int)name, result);
+     return result;
+ }
+ 
+@@ -3476,6 +3628,7 @@ static HANDLE WINAPI expCreateFileA(LPCS
+ 	      i2, p1, i3, i4, i5);
+     if((!cs1) || (strlen(cs1)<2))return -1;
+ 
++    if(strncmp(cs1, "\\\\.\\", 4) == 0) return -1; //Hack for PECompact2
+ #ifdef QTX
+     if(strstr(cs1, "QuickTime.qts"))
+     {
+@@ -3674,12 +3827,28 @@ static WIN_BOOL WINAPI expGetProcessAffi
+ 						 LPDWORD lpProcessAffinityMask,
+ 						 LPDWORD lpSystemAffinityMask)
+ {
++    SYSTEM_INFO si;
++    DWORD mask;
+     dbgprintf("GetProcessAffinityMask(0x%x, %p, %p) => 1\n",
+ 	      hProcess, lpProcessAffinityMask, lpSystemAffinityMask);
+-    if(lpProcessAffinityMask)*lpProcessAffinityMask=1;
+-    if(lpSystemAffinityMask)*lpSystemAffinityMask=1;
++    expGetSystemInfo(&si);
++    mask = ((DWORD)1 << si.dwNumberOfProcessors) - 1;
++    if(lpProcessAffinityMask)*lpProcessAffinityMask=mask;
++    if(lpSystemAffinityMask)*lpSystemAffinityMask=mask;
++    dbgprintf("GetProcessAffinityMask =>0x%08x\n", mask);
+     return 1;
+ }
++
++// Fake implementation: does nothing, but does it right :)
++static WIN_BOOL WINAPI expSetProcessAffinityMask(HANDLE hProcess,
++                                              LPDWORD dwProcessAffinityMask)
++{
++    dbgprintf("SetProcessAffinityMask(0x%x, 0x%x) => 1\n",
++              hProcess, dwProcessAffinityMask);
++
++    return 1;
++};
++
+ 
+ static int WINAPI expMulDiv(int nNumber, int nNumerator, int nDenominator)
+ {
+@@ -4454,6 +4623,13 @@ static void WINAPI expGlobalMemoryStatus
+         lpmem->dwAvailPageFile++;
+ }
+ 
++static INT WINAPI expGetThreadPriority(HANDLE hthread)
++{
++    printf("GetThreadPriority(%p)\n",hthread);
++    dbgprintf("GetThreadPriority(%p)\n",hthread);
++    return 0;
++}
++
+ /**********************************************************************
+  * SetThreadPriority [KERNEL32.@]  Sets priority for thread.
+  *
+@@ -4465,6 +4641,7 @@ static WIN_BOOL WINAPI expSetThreadPrior
+     HANDLE hthread, /* [in] Handle to thread */
+     INT priority)   /* [in] Thread priority level */
+ {
++    printf("SetThreadPriority(0x%x,%d)\n",hthread,priority);
+     dbgprintf("SetThreadPriority(0x%x,%d)\n",hthread,priority);
+     return TRUE;
+ }
+@@ -4627,6 +4804,16 @@ static void *exprealloc(void *ptr, size_
+ 	return my_realloc(ptr, size);        
+ }
+ 
++static WIN_BOOL WINAPI expSetRect(LPRECT rect, int left, int top,
++                                  int right, int bottom) {
++  rect->left   = left;
++  rect->top    = top;
++  rect->right  = right;
++  rect->bottom = bottom;
++  dbgprintf("SetRect(0x%x (%d,%d)-(%d,%d) => 0\n", rect, left, top, right, bottom);
++  return 0;
++}
++
+ static double expfloor(double x)
+ {
+     dbgprintf("floor(%lf)\n", x);
+@@ -4650,6 +4837,21 @@ static double exp_CIsin(void)
+ 
+     dbgprintf("_CIsin(%lf)\n", x);
+     return sin(x);
++}
++
++static double exp_CIsqrt(void)
++{
++    FPU_DOUBLE(x);
++    
++    dbgprintf("_CIsqrt(%lf)\n", x);
++    return sqrt(x);
++}
++
++// Fake implementation, needed by wvc1dmod.dll
++static int WINAPI expPropVariantClear(void *pvar)
++{
++//    dbgprintf("PropVariantclear (0x%08x), %s\n", ptr, ptr);
++    return 1;
+ }
+ 
+ struct exports
+@@ -4668,6 +4870,9 @@ struct libs
+ #define FF(X,Y) \
+     {#X, Y, (void*)exp##X},
+ 
++#define UNDEFF(X, Y) \
++    {#X, Y, -1},
++    
+ struct exports exp_kernel32[]=
+ {
+     FF(IsBadWritePtr, 357)
+@@ -4717,6 +4922,7 @@ struct exports exp_kernel32[]=
+     FF(MultiByteToWideChar, 427)
+     FF(WideCharToMultiByte, -1)
+     FF(GetVersionExA, -1)
++    FF(GetVersionExW, -1)
+     FF(CreateSemaphoreA, -1)
+     FF(QueryPerformanceCounter, -1)
+     FF(QueryPerformanceFrequency, -1)
+@@ -4803,6 +5009,7 @@ struct exports exp_kernel32[]=
+     FF(MulDiv, -1)
+     FF(lstrcmpiA, -1)
+     FF(lstrlenA, -1)
++    FF(lstrlenW, -1)
+     FF(lstrcpyA, -1)
+     FF(lstrcatA, -1)
+     FF(lstrcpynA,-1)
+@@ -4815,10 +5022,19 @@ struct exports exp_kernel32[]=
+     FF(SetThreadAffinityMask,-1)
+     FF(GetCurrentProcessId,-1)
+     FF(GlobalMemoryStatus,-1)
++    FF(GetThreadPriority,-1)
+     FF(SetThreadPriority,-1)
+     FF(ExitProcess,-1)
+     {"LoadLibraryExA", -1, (void*)&LoadLibraryExA},
+     FF(SetThreadIdealProcessor,-1)
++    FF(SetProcessAffinityMask, -1)
++    FF(VirtualProtect, -1)
++    FF(EncodePointer,-1)
++    FF(DecodePointer,-1)
++    UNDEFF(FlsAlloc, -1)
++    UNDEFF(FlsGetValue, -1)
++    UNDEFF(FlsSetValue, -1)
++    UNDEFF(FlsFree, -1)
+ };
+ 
+ struct exports exp_msvcrt[]={
+@@ -4858,6 +5074,7 @@ struct exports exp_msvcrt[]={
+     FF(_CIpow,-1)
+     FF(_CIcos,-1)
+     FF(_CIsin,-1)
++    FF(_CIsqrt,-1)
+     FF(ldexp,-1)
+     FF(frexp,-1)
+     FF(sprintf,-1)
+@@ -4893,6 +5110,7 @@ struct exports exp_winmm[]={
+ };
+ struct exports exp_user32[]={
+     FF(LoadStringA, -1)
++    FF(LoadStringW, -1)
+     FF(wsprintfA, -1)
+     FF(GetDC, -1)
+     FF(GetDesktopWindow, -1)
+@@ -4934,6 +5152,7 @@ struct exports exp_user32[]={
+ #endif
+     FF(MessageBeep, -1)
+     FF(DialogBoxParamA, -1)
++    FF(SetRect, -1)
+ };
+ struct exports exp_advapi32[]={
+     FF(RegCloseKey, -1)
+@@ -4943,6 +5162,7 @@ struct exports exp_advapi32[]={
+     FF(RegOpenKeyA, -1)
+     FF(RegOpenKeyExA, -1)
+     FF(RegQueryValueExA, -1)
++    FF(RegQueryValueExW, -1)
+     FF(RegSetValueExA, -1)
+ };
+ struct exports exp_gdi32[]={
+@@ -4968,6 +5188,7 @@ struct exports exp_ole32[]={
+     FF(CoTaskMemAlloc, -1)
+     FF(CoTaskMemFree, -1)
+     FF(StringFromGUID2, -1)
++    FF(PropVariantClear, -1)
+ };
+ // do we really need crtdll ???
+ // msvcrt is the correct place probably...
+@@ -5063,7 +5284,7 @@ struct libs libraries[]={
+ #else
+ #define MANGLE(a) #a
+ #endif
+-static void ext_stubs(void)
++static WIN_BOOL WINAPI ext_stubs(void)
+ {
+     // expects:
+     //  ax  position index
+@@ -5104,7 +5325,7 @@ static void ext_stubs(void)
+ 	: "memory", "edx", "eax"
+ 	);
+ #endif
+-
++    return 0;
+ }
+ 
+ //static void add_stub(int pos)
+@@ -5217,6 +5438,16 @@ void* LookupExternal(const char* library
+     }
+ 
+ no_dll:
++    {
++    /* Search to see if this function has alreayd been defined */
++    char expname[80];
++    sprintf(expname, "%s:%d", library, ordinal);
++    j = strlen(expname);
++    for(i=0; i < pos; i++) {
++        if(strncmp(expname,export_names[i], j) == 0)
++        return (void*)extcode+i*0x30;
++    }
++    }
+ #endif
+ /* xine: pos is now tested inside add_stub()
+     if(pos>150)return 0;
+@@ -5227,7 +5458,7 @@ no_dll:
+ 
+ void* LookupExternalByName(const char* library, const char* name)
+ {
+-    /* char* answ; -- unused */
++    char* answ;
+     int i,j;
+     //   return (void*)ext_unknown;
+     if(library==0)
+@@ -5235,10 +5466,9 @@ void* LookupExternalByName(const char* l
+ 	printf("ERROR: library=0\n");
+ 	return (void*)ext_unknown;
+     }
+-    if(name==0)
+-    {
+-	printf("ERROR: name=0\n");
+-	return (void*)ext_unknown;
++    if((unsigned int)name<=0xffff)
++    {
++        return LookupExternal(library, (int)name);
+     }
+     dbgprintf("External func %s:%s\n", library, name);
+     for(i=0; i<sizeof(libraries)/sizeof(struct libs); i++)
+@@ -5249,13 +5479,56 @@ void* LookupExternalByName(const char* l
+ 	{
+ 	    if(strcmp(name, libraries[i].exps[j].name))
+ 		continue;
++        if((unsigned int)(libraries[i].exps[j].func) == -1)
++            return NULL; //undefined func
+ 	    //	    printf("Hit: 0x%08X\n", libraries[i].exps[j].func);
+ 	    return libraries[i].exps[j].func;
+ 	}
+     }
+-/* xine: pos is now tested inside add_stub()
++
++#ifndef LOADLIB_TRY_NATIVE
++    /* hack for vss h264 */
++    if (!strcmp(library,"vssh264core.dll"))
++#endif
++        /* ok, this is a hack, and a big memory leak. should be fixed. - alex */
++    {
++        int hand;
++        WINE_MODREF *wm;
++        void *func;
++
++        hand = LoadLibraryA(library);
++        if (!hand)
++            goto no_dll_byname;
++        wm = MODULE32_LookupHMODULE(hand);
++        if (!wm)
++        {
++            FreeLibrary(hand);
++            goto no_dll_byname;
++        }
++        func = PE_FindExportedFunction(wm, name, 0);
++        if (!func)
++        {
++            printf("No such name in external dll\n");
++            FreeLibrary((int)hand);
++            goto no_dll_byname;
++        }
++
++        printf("External dll loaded (offset: 0x%x, func: %p)\n",
++               hand, func);
++        return func;
++    }
++
++no_dll_byname:
++    {
++    /* Search to see if this function has alreayd been defined */
++    j = strlen(name);
++    for(i=0; i < pos; i++) {
++        if(strncmp(name,export_names[i], j) == 0)
++        return (void*)extcode+i*0x30;
++    }
++    }
+     if(pos>150)return 0;// to many symbols
+-*/
++
+     strcpy(export_names[pos], name);
+     return add_stub();
+ }
