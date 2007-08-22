@@ -85,7 +85,7 @@ int main(int argc, char *argv[])
         codec = optarg;
         break;
       case 'd':
-        //print_verbose_messages = 8;
+        print_verbose_messages = 8;
         break;
       case 's':
         sscanf(optarg,"%dx%d", &width, &height);
