@@ -182,7 +182,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
 +                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
 +                enc->codec_tag, bpp, out_fmt, getpid(), *(int *)pthread_self(),
-+                ((print_verbose_messages & VB_PLAYBACK == VB_PLAYBACK) ?
++                ((print_verbose_messages & VB_PLAYBACK) == VB_PLAYBACK ?
 +                            "-d" : ""));
 +            ds_mpi = new ds_mpi_t;
 +            snprintf(shm, 80, "/dshow_shm.%x", *(int *)pthread_self());
@@ -286,7 +286,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +    ret = sem_twait(ds_mpi->sem_rd, 10);
 +    if(ret == 0 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
 +        *got_picture_ptr = 1;
-+        picture->interlaced_frame = (ds_mpi->vd->ret & 10) ? true : false;
++        picture->interlaced_frame = (ds_mpi->vd->ret & 0x10) ? true : false;
 +        avctx->get_buffer(avctx, picture);
 +#if 0  //Using YV12
 +        if(avctx->height & 0x0f) {
