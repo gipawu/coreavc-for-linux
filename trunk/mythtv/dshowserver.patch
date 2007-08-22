@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp.orig	2007-08-18 18:23:55.000000000 -0700
-+++ libs/libmythtv/avformatdecoder.cpp	2007-08-19 19:14:32.000000000 -0700
+--- libs/libmythtv/avformatdecoder.cpp.orig	2007-08-21 01:44:04.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2007-08-21 01:47:43.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -347,7 +347,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                      CODEC_ID_MPEG2VIDEO == enc->codec_id)
                  {
-@@ -3205,7 +3471,21 @@
+@@ -3207,7 +3473,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -367,13 +367,13 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +                        ret = d->DecodeDirectShowVideo(context, &mpa_pic,
 +                                                  &gotpicture, ptr, len);
 +                    else if (d->HasMPEG2Dec())
-                         ret = d->DecodeMPEG2Video(context, &mpa_pic,
-                                                   &gotpicture, ptr, len);
-                     else
+                     {
+                         if (indvdstill)
+                         {
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro.orig	2007-08-18 18:23:55.000000000 -0700
-+++ libs/libmythtv/libmythtv.pro	2007-08-18 18:24:24.000000000 -0700
+--- libs/libmythtv/libmythtv.pro.orig	2007-08-21 01:44:04.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2007-08-21 01:46:23.000000000 -0700
 @@ -32,6 +32,7 @@
  LIBS += -lmyth-$${LIBVERSION} -lmythavutil-$${LIBVERSION}
  LIBS += -lmythavcodec-$${LIBVERSION} -lmythdvdnav-$${LIBVERSION}
