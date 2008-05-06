@@ -145,18 +145,9 @@ void GetProductVersion(HMODULE hMod)
         res[i+8]=='u'  && res[i+10]=='c' && res[i+12]=='t' && res[i+14]=='V' &&
         res[i+16]=='e' && res[i+18]=='r' && res[i+20]=='s' && res[i+22]=='i' &&
         res[i+24]=='o' && res[i+26]=='n' && res[i+28]==0) {
-        int v1, v2 = 0, v3 = 0, v4 = 0;
-        v1 = res[i+30] - '0';
-	if(res[i+34] != ' ')
-          v2 = (res[i+34] - '0') << 8;
-        v2 += (res[i+36] - '0');
-	if(res[i+40] != ' ')
-          v3 = (res[i+40] - '0') << 8;
-        v3 += (res[i+42] - '0');
-	if(res[i+46] != ' ')
-          v4 = (res[i+46] - '0') << 8;
-        v4 += (res[i+48] - '0');
-        printf("ProductVersion: %d.%d.%d.%d\n", v1, v2, v3, v4);
+	char s[256];
+	WideCharToMultiByte(0,0,res+i+30,-1,s,256,NULL,NULL);
+	printf("ProductVersion: %s\n", s);
       }
     }
 }

@@ -7,7 +7,7 @@ if(scalar @ARGV != 1 || ! -d ($mplayer = shift @ARGV) ||
 my ($base) = ($0 =~ /(^.*)\/[^\/]+$/);
 $base =~ s/\/+/\//g;
 @lines = split(/\n/, `diff -x .svn -x Makefile -x compat -ur --unidirectional-new-file $mplayer/loader $base/../loader`);
-print "$base\n";
+#print "$base\n";
 foreach (@lines) {
   next if(/^Binary / || /^Only in /);
   s/^\+\+\+ $base\/\.\.\//+++ /;

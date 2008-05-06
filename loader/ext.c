@@ -65,6 +65,7 @@ int dbg_vprintf( const char *format, va_list args )
 {
     return 0;
 }
+#if 0
 int __vprintf( const char *format, ... )
 {
 #ifdef DETAILED_OUT
@@ -75,6 +76,7 @@ int __vprintf( const char *format, ... )
 #endif
     return 0;
 }
+#endif
 
 HANDLE WINAPI GetProcessHeap(void)
 {
