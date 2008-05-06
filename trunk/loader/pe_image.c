@@ -942,7 +942,7 @@ WIN_BOOL PE_InitDLL( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
     ) {
 	DLLENTRYPROC entry ;
 	entry = (void*)PE_FindExportedFunction(wm, "DllMain", 0);
-	if(entry==NULL)
+	if(1 || entry==NULL)
 	    entry = (void*)RVA_PTR( wm->module,OptionalHeader.AddressOfEntryPoint );
         
 	TRACE_(relay)("CallTo32(entryproc=%p,module=%08x,type=%ld,res=%p)\n",

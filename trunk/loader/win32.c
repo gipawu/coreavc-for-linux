@@ -579,6 +579,8 @@ static HMODULE WINAPI expGetDriverModuleHandle(DRVR* pdrv)
 #define	MODULE_HANDLE_version	((HMODULE)0x129)
 #define	MODULE_HANDLE_gdi32	((HMODULE)0x130)
 #define	MODULE_HANDLE_oleaut32	((HMODULE)0x131)
+#define	MODULE_HANDLE_shell32	((HMODULE)0x132)
+#define	MODULE_HANDLE_comctl32	((HMODULE)0x133)
 
 static HMODULE WINAPI expGetModuleHandleA(const char* name)
 {
@@ -607,6 +609,10 @@ static HMODULE WINAPI expGetModuleHandleA(const char* name)
 #endif
 	if(name && strcasecmp(name, "oleaut32")==0 || strcasecmp(name, "oleaut32.dll")==0)
 	    result=MODULE_HANDLE_oleaut32;
+	if(name && strcasecmp(name, "shell32")==0 || strcasecmp(name, "shell32.dll")==0)
+	    result=MODULE_HANDLE_shell32;
+	if(name && strcasecmp(name, "comctl32")==0 || strcasecmp(name, "comctl32.dll")==0)
+	    result=MODULE_HANDLE_comctl32;
     }
     dbgprintf("GetModuleHandleA('%s') => 0x%x\n", name, result);
     return result;
@@ -2511,6 +2517,10 @@ static void* WINAPI expGetProcAddress(HMODULE mod, char* name)
 	result=LookupExternalByName("gdi32.dll", name); break;
     case MODULE_HANDLE_oleaut32:
 	result=LookupExternalByName("oleaut32.dll", name); break;
+    case MODULE_HANDLE_shell32:
+	result=LookupExternalByName("shell32.dll", name); break;
+    case MODULE_HANDLE_comctl32:
+	result=LookupExternalByName("comctl32.dll", name); break;
     default:
 	result=GetProcAddress(mod, name);
     }
@@ -3260,12 +3270,13 @@ static void WINAPI expGetSystemTimeAsFileTime(FILETIME* systime)
     struct timeval tv;
     unsigned long long secs;
 
-    dbgprintf("GetSystemTime(0x%x)\n", systime);
+    dbgprintf("GetSystemTimeAsFileTime(0x%x)\n", systime);
     gettimeofday(&tv, NULL);
     secs = (tv.tv_sec + SECS_1601_TO_1970) * 10000000;
     secs += tv.tv_usec * 10;
     systime->dwLowDateTime = secs & 0xffffffff;
     systime->dwHighDateTime = (secs >> 32);
+    dbgprintf("  %lld secs\n", secs);
 }
 
 static int WINAPI expGetEnvironmentVariableA(const char* name, char* field, int size)
@@ -3923,6 +3934,12 @@ static LONG WINAPI expInterlockedExchange(long *dest, long l)
 static void WINAPI expInitCommonControls(void)
 {
     dbgprintf("InitCommonControls called!\n");
+    return;
+}
+
+static void WINAPI expInitCommonControlsEx(void)
+{
+    dbgprintf("InitCommonControlsEx called!\n");
     return;
 }
 
@@ -4952,6 +4969,13 @@ static WIN_BOOL WINAPI expEnumDisplaySettingsA(LPCSTR name ,DWORD n,
     return 1;
 }
 
+static WIN_BOOL WINAPI expSHGetSpecialFolderPathA(HWND hwndOwner,
+    LPSTR szPath, int nFolder, WIN_BOOL bCreate)
+{
+    dbgprintf("SHGetSpecialFolderPathA (hwndOwner=0x%x szPath='%s', nFolder=%d, bCreate=%d\n", hwndOwner, szPath, nFolder, bCreate);
+    return 0;
+}
+
 struct exports
 {
     char name[64];
@@ -5316,6 +5340,7 @@ struct exports exp_crtdll[]={
 struct exports exp_comctl32[]={
     FF(StringFromGUID2, -1)
     FF(InitCommonControls, 17)
+    FF(InitCommonControlsEx, -1)
 #ifdef QTX
     FF(CreateUpDownControl, 16)
 #endif
@@ -5340,6 +5365,10 @@ struct exports exp_oleaut32[]={
 #endif
 };
 
+struct exports exp_shell32[]={
+    FF(SHGetSpecialFolderPathA, -1)
+//    FF(ShellExecuteExA, -1)
+};
 /*  realplayer8:
 	DLL Name: PNCRT.dll
 	vma:  Hint/Ord Member-Name
@@ -5415,6 +5444,7 @@ struct libs libraries[]={
 #endif
     LL(comdlg32)
     LL(shlwapi)
+    LL(shell32)
 };
 
 static WIN_BOOL WINAPI ext_stubs(void)
