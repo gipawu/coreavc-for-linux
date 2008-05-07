@@ -14,4 +14,6 @@ foreach (@lines) {
   s/^--- $mplayer\//--- /;
   print "$_\n";
 }
-system("cat $base/mplayer.patch");   
+if(-e "$mplayer/loader/Makefile") {
+  system("cat $base/mplayer.patch");
+}

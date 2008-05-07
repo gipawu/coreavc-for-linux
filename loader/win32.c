@@ -14,7 +14,7 @@ for DLL to know too much about its environment.
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: win32.c 23446 2007-06-02 12:24:35Z diego $
+ * $Id$
  */
 
 #include "config.h"
@@ -3980,7 +3980,14 @@ static int WINAPI expDuplicateHandle(HANDLE hSourceProcessHandle,  // handle to 
     return 1;
 }
 
+static HRESULT WINAPI expCoInitializeEx(LPVOID lpReserved, DWORD dwCoInit)
+{
+    dbgprintf("CoInitializeEx(%p, %d) called\n", lpReserved, dwCoInit);
+    return S_OK;
+}
+
 // required by PIM1 codec (used by win98 PCTV Studio capture sw)
+#define COINIT_APARTMENTTHREADED 0x02
 static HRESULT WINAPI expCoInitialize(
 				      LPVOID lpReserved	/* [in] pointer to win32 malloc interface
 				      (obsolete, should be NULL) */
@@ -3989,7 +3996,26 @@ static HRESULT WINAPI expCoInitialize(
     /*
      * Just delegate to the newer method.
      */
-    return 0; //CoInitializeEx(lpReserved, COINIT_APARTMENTTHREADED);
+    return expCoInitializeEx(lpReserved, COINIT_APARTMENTTHREADED);
+}
+
+static void WINAPI expCoUninitialize(void)
+{
+    dbgprintf("CoUninitialize() called\n");
+} 
+
+/* allow static linking */
+HRESULT WINAPI CoInitializeEx(LPVOID lpReserved, DWORD dwCoInit)
+{
+    return expCoInitializeEx(lpReserved, dwCoInit);
+}
+HRESULT WINAPI CoInitialize(LPVOID lpReserved)
+{
+    return expCoInitialize(lpReserved); 
+}
+void WINAPI CoUninitialize(void)
+{
+    return expCoUninitialize();
 }
 
 static DWORD WINAPI expSetThreadAffinityMask
