@@ -10,7 +10,7 @@
 
 #include "DS_Filter.h"
 
-struct _DS_AudioDecoder
+struct DS_AudioDecoder
 { 
     WAVEFORMATEX in_fmt;
     AM_MEDIA_TYPE m_sOurType, m_sDestType;
@@ -21,7 +21,7 @@ struct _DS_AudioDecoder
 
 #include "DS_AudioDecoder.h"
 #ifdef WIN32_LOADER
-#include "../ldt_keeper.h"
+#include "ldt_keeper.h"
 #endif
 
 #include <string.h>
@@ -95,7 +95,6 @@ DS_AudioDecoder * DS_AudioDecoder_Open(char* dllname, GUID* guid, WAVEFORMATEX* 
 
     /*try*/
     {
-        ALLOCATOR_PROPERTIES props, props1;
         this->m_pDS_Filter = DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType,&sampleProcData);
 	if( !this->m_pDS_Filter ) {
            free(this);

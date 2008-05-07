@@ -1,5 +1,5 @@
-#ifndef WINEACM_H
-#define WINEACM_H
+#ifndef MPLAYER_WINEACM_H
+#define MPLAYER_WINEACM_H
 /* -*- tab-width: 8; c-basic-offset: 4 -*- */
 
 /***********************************************************************
@@ -14,15 +14,15 @@ extern "C" {
 #endif /* defined(__cplusplus) */
 
 
-typedef struct _WINE_ACMDRIVERID *PWINE_ACMDRIVERID;
-typedef struct _WINE_ACMDRIVER   *PWINE_ACMDRIVER;
+typedef struct WINE_ACMDRIVERID *PWINE_ACMDRIVERID;
+typedef struct WINE_ACMDRIVER   *PWINE_ACMDRIVER;
 
-typedef struct _WINE_ACMOBJ
+typedef struct WINE_ACMOBJ
 {
   PWINE_ACMDRIVERID	pACMDriverID;
 } WINE_ACMOBJ, *PWINE_ACMOBJ;
 
-typedef struct _WINE_ACMDRIVER
+typedef struct WINE_ACMDRIVER
 {
     WINE_ACMOBJ		obj;
     HDRVR      		hDrvr;
@@ -31,7 +31,7 @@ typedef struct _WINE_ACMDRIVER
     int                 iUsage;
 } WINE_ACMDRIVER;
 
-typedef struct _WINE_ACMSTREAM
+typedef struct WINE_ACMSTREAM
 {
     WINE_ACMOBJ		obj;
     PWINE_ACMDRIVER	pDrv;
@@ -39,7 +39,7 @@ typedef struct _WINE_ACMSTREAM
     HACMDRIVER		hAcmDriver;
 } WINE_ACMSTREAM, *PWINE_ACMSTREAM;
 
-typedef struct _WINE_ACMDRIVERID
+typedef struct WINE_ACMDRIVERID
 {
     LPSTR               pszFileName;
     WORD		wFormatTag;
@@ -69,4 +69,4 @@ PWINE_ACMOBJ MSACM_GetObj(HACMOBJ hObj);
 } /* extern "C" */
 #endif /* defined(__cplusplus) */
 
-#endif /* WINEACM_H */
+#endif /* MPLAYER_WINEACM_H */

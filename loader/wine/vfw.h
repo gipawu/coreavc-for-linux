@@ -1,16 +1,14 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: vfw.h 18786 2006-06-22 13:34:00Z diego $
  */
 
-#ifndef __WINE_VFW_H
-#define __WINE_VFW_H
+#ifndef MPLAYER_VFW_H
+#define MPLAYER_VFW_H
 //#include "pshpack1.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
-#ifndef __WINE_WINGDI_H
 
 typedef struct __attribute__((__packed__))
 {
@@ -43,10 +41,9 @@ typedef struct {
 } BITMAPINFO, *LPBITMAPINFO;
 #endif
 
-#endif
 #define VFWAPI	
 #define VFWAPIV	
-#ifndef __WINE_WINDEF_H
+#ifndef MPLAYER_WINDEF_H
 typedef long (__stdcall__ *DRIVERPROC)(long,HDRVR,unsigned int,long,long);
 #endif
 
@@ -504,7 +501,7 @@ long VFWAPIV ICDraw(HIC hic,long dwFlags,void* lpFormat,void* lpData,long cbData
 
 #define	AVIGETFRAMEF_BESTDISPLAYFMT	1
 
-typedef struct _AVISTREAMINFOA {
+typedef struct AVISTREAMINFOA {
     long	fccType;
     long	fccHandler;
     long	dwFlags;        /* AVIIF_* */
@@ -525,7 +522,7 @@ typedef struct _AVISTREAMINFOA {
     char	szName[64];
 } AVISTREAMINFOA, * LPAVISTREAMINFOA, *PAVISTREAMINFOA;
 
-typedef struct _AVISTREAMINFOW {
+typedef struct AVISTREAMINFOW {
     long	fccType;
     long	fccHandler;
     long	dwFlags;
@@ -565,7 +562,7 @@ DECL_WINELIB_TYPE_AW(PAVISTREAMINFO)
 #define AVIFILECAPS_ALLKEYFRAMES	0x00000010
 #define AVIFILECAPS_NOCOMPRESSION	0x00000020
 
-typedef struct _AVIFILEINFOW {
+typedef struct AVIFILEINFOW {
     long               dwMaxBytesPerSec;
     long               dwFlags;
     long               dwCaps;
@@ -580,7 +577,7 @@ typedef struct _AVIFILEINFOW {
     short               szFileType[64];
 } AVIFILEINFOW, * LPAVIFILEINFOW, *PAVIFILEINFOW;
 
-typedef struct _AVIFILEINFOA {
+typedef struct AVIFILEINFOA {
     long               dwMaxBytesPerSec;
     long               dwFlags;
     long               dwCaps;
@@ -671,4 +668,4 @@ typedef struct {
 #ifdef __cplusplus
 }
 #endif
-#endif /* __WINE_VFW_H */
+#endif /* MPLAYER_VFW_H */

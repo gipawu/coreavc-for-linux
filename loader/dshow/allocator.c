@@ -1,7 +1,6 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: allocator.c 22322 2007-02-23 08:07:07Z voroshil $
  */
 
 #include "config.h"
@@ -13,10 +12,10 @@
 
 static int AllocatorKeeper = 0;
 
-struct _avm_list_t
+struct avm_list_t
 {
-    struct _avm_list_t* next;
-    struct _avm_list_t* prev;
+    struct avm_list_t* next;
+    struct avm_list_t* prev;
     void* member;
 };
 

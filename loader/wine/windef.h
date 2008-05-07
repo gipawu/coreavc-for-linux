@@ -5,12 +5,11 @@
  *
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: windef.h 18786 2006-06-22 13:34:00Z diego $
  *
  */
 
-#ifndef __WINE_WINDEF_H
-#define __WINE_WINDEF_H
+#ifndef MPLAYER_WINDEF_H
+#define MPLAYER_WINDEF_H
 
 # include "config.h"
 
@@ -95,7 +94,7 @@ extern "C" {
 #  ifndef _EGCS_ 
 #define __stdcall __attribute__((__stdcall__))
 #define __cdecl   __attribute__((__cdecl__))
-#  define __RESTORE_ES  __asm__ __volatile__("pushl %ds\n\tpopl %es")
+#  define RESTORE_ES  __asm__ __volatile__("pushl %ds\n\tpopl %es")
 #  endif
 # else
 // #  error You need gcc >= 2.7 to build Wine on a 386
@@ -103,7 +102,7 @@ extern "C" {
 #else 
 # define __stdcall
 # define __cdecl
-# define __RESTORE_ES
+# define RESTORE_ES
 #endif
 
 #define CALLBACK    __stdcall
@@ -339,8 +338,8 @@ typedef LRESULT CALLBACK (*WNDPROC)(HWND,UINT,WPARAM,LPARAM);
  * 16 bit windows code.
  */
 
-#ifndef __WINE_WINDEF16_H
-#define __WINE_WINDEF16_H
+#ifndef MPLAYER_WINDEF16_H
+#define MPLAYER_WINDEF16_H
 
 #include "windef.h"
 
@@ -454,7 +453,7 @@ typedef VOID    CALLBACK (*TIMERPROC16)(HWND16,UINT16,UINT16,DWORD);
 typedef LRESULT CALLBACK (*WNDENUMPROC16)(HWND16,LPARAM);
 typedef LRESULT CALLBACK (*WNDPROC16)(HWND16,UINT16,WPARAM16,LPARAM);
 
-#endif /* __WINE_WINDEF16_H */
+#endif /* MPLAYER_WINDEF16_H */
 
 /* Define some empty macros for compatibility with Windows code. */
 
@@ -581,7 +580,7 @@ typedef struct tagPOINT
     LONG  y;
 } POINT, *PPOINT, *LPPOINT;
 
-typedef struct _POINTL
+typedef struct POINTL
 {
     LONG x;
     LONG y;
@@ -638,4 +637,4 @@ typedef const RECTL *LPCRECTL;
 }
 #endif
 
-#endif /* __WINE_WINDEF_H */
+#endif /* MPLAYER_WINDEF_H */

@@ -1,7 +1,6 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: inputpin.c 22323 2007-02-23 09:58:01Z voroshil $
  */
 
 #include "inputpin.h"

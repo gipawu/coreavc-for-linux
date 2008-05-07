@@ -1,11 +1,10 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: driver.h 18786 2006-06-22 13:34:00Z diego $
  */
 
-#ifndef loader_driver_h
-#define	loader_driver_h
+#ifndef MPLAYER_DRIVER_H
+#define MPLAYER_DRIVER_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,4 +24,4 @@ void DrvClose(HDRVR hdrvr);
 }
 #endif
 
-#endif
+#endif /* MPLAYER_DRIVER_H */

@@ -14,7 +14,6 @@ for DLL to know too much about its environment.
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id$
  */
 
 #include "config.h"
@@ -38,6 +37,7 @@ for DLL to know too much about its environment.
 #include "wine/debugtools.h"
 #include "wine/module.h"
 #include "wine/winuser.h"
+#include "wine/objbase.h"
 
 #include <stdio.h>
 #include "win32.h"
@@ -68,7 +68,11 @@ for DLL to know too much about its environment.
 #include <kstat.h>
 #endif
 
+#ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
+#else
+#include "osdep/mmap.h"
+#endif
 #include "osdep/mmap_anon.h"
 
 #if HAVE_VSSCANF
@@ -248,11 +252,12 @@ typedef struct th_list_t{
 
 
 // have to be cleared by GARBAGE COLLECTOR
-static unsigned char* heap=NULL;
-static int heap_counter=0;
+//static unsigned char* heap=NULL;
+//static int heap_counter=0;
 static tls_t* g_tls=NULL;
 static th_list* list=NULL;
 
+#if 0
 static void test_heap(void)
 {
     int offset=0;
@@ -273,6 +278,7 @@ static void test_heap(void)
 	    printf("Free heap corruption at address %d\n", offset);
 	}
 }
+#endif
 #undef MEMORY_DEBUG
 
 #ifdef MEMORY_DEBUG
@@ -973,7 +979,6 @@ static void WINAPI expGetSystemInfo(SYSTEM_INFO* si)
     /* FIXME: better values for the two entries below... */
     static int cache = 0;
     static SYSTEM_INFO cachedsi;
-    unsigned int regs[4];
     dbgprintf("GetSystemInfo(%p) =>\n", si);
 
     if (cache) {
@@ -998,7 +1003,6 @@ static void WINAPI expGetSystemInfo(SYSTEM_INFO* si)
     /* mplayer's way to detect PF's */
     {
 #include "cpudetect.h"
-	extern CpuCaps gCpuCaps;
 
 	if (gCpuCaps.hasMMX)
 	    PF[PF_MMX_INSTRUCTIONS_AVAILABLE] = TRUE;
@@ -1826,8 +1830,8 @@ static HANDLE WINAPI expCreateSemaphoreA(char* v1, long init_count,
 {
     pthread_mutex_t *pm;
     pthread_cond_t  *pc;
-    mutex_list* pp;
     /*
+    mutex_list* pp;
      printf("CreateSemaphoreA(%p = %s)\n", name, (name ? name : "<null>"));
      pp=mlist;
      while(pp)
@@ -2216,7 +2220,6 @@ static HRSRC WINAPI expFindResourceA(HMODULE module, char* name, char* type)
     return result;
 }
 
-extern HRSRC WINAPI LoadResource(HMODULE, HRSRC);
 static HGLOBAL WINAPI expLoadResource(HMODULE module, HRSRC res)
 {
     HGLOBAL result=LoadResource(module, res);
@@ -2301,7 +2304,6 @@ static LPCSTR WINAPI expGetEnvironmentStrings()
 
 static int WINAPI expGetStartupInfoA(STARTUPINFOA *s)
 {
-    int i;
     dbgprintf("GetStartupInfoA(0x%x) => 1\n");
     memset(s, 0, sizeof(*s));
     s->cb=sizeof(*s);
@@ -2362,7 +2364,6 @@ static int WINAPI expGetACP(void)
     dbgprintf("GetACP() => 0\n");
     return 0;
 }
-extern WINE_MODREF *MODULE32_LookupHMODULE(HMODULE m);
 static int WINAPI expGetModuleFileNameA(int module, char* s, int len)
 {
     WINE_MODREF *mr;
@@ -2412,7 +2413,6 @@ static int WINAPI expLoadLibraryA(char* name)
 {
     int result = 0;
     char* lastbc;
-    int i;
     if (!name)
 	return -1;
     // we skip to the last backslash
@@ -2916,7 +2916,6 @@ static int WINAPI expWritePrivateProfileStringA(const char* appname,
 						const char* string,
 						const char* filename)
 {
-    int size=256;
     char* fullname;
     dbgprintf("WritePrivateProfileStringA('%s', '%s', '%s', '%s')", appname, keyname, string, filename );
     if(!(appname && keyname && filename) )
@@ -2939,16 +2938,16 @@ static int WINAPI expWritePrivateProfileStringA(const char* appname,
     return 0;
 }
 
-unsigned int _GetPrivateProfileIntA(const char* appname, const char* keyname, INT default_value, const char* filename)
+unsigned int GetPrivateProfileIntA_(const char* appname, const char* keyname, INT default_value, const char* filename)
 {
     return expGetPrivateProfileIntA(appname, keyname, default_value, filename);
 }
-int _GetPrivateProfileStringA(const char* appname, const char* keyname,
+int GetPrivateProfileStringA_(const char* appname, const char* keyname,
 			      const char* def_val, char* dest, unsigned int len, const char* filename)
 {
     return expGetPrivateProfileStringA(appname, keyname, def_val, dest, len, filename);
 }
-int _WritePrivateProfileStringA(const char* appname, const char* keyname,
+int WritePrivateProfileStringA_(const char* appname, const char* keyname,
 				const char* string, const char* filename)
 {
     return expWritePrivateProfileStringA(appname, keyname, string, filename);
@@ -2956,9 +2955,9 @@ int _WritePrivateProfileStringA(const char* appname, const char* keyname,
 
 
 
-static int WINAPI expDefDriverProc(int _private, int id, int msg, int arg1, int arg2)
+static int WINAPI expDefDriverProc(int private, int id, int msg, int arg1, int arg2)
 {
-    dbgprintf("DefDriverProc(0x%x, 0x%x, 0x%x, 0x%x, 0x%x) => 0\n", _private, id, msg, arg1, arg2);
+    dbgprintf("DefDriverProc(0x%x, 0x%x, 0x%x, 0x%x, 0x%x) => 0\n", private, id, msg, arg1, arg2);
     return 0;
 }
 
@@ -3177,7 +3176,7 @@ static int WINAPI expGetSystemPaletteEntries(int hdc, int iStartIndex, int nEntr
 }
 
 /*
- typedef struct _TIME_ZONE_INFORMATION {
+ typedef struct TIME_ZONE_INFORMATION {
  long Bias;
  char StandardName[32];
  SYSTEMTIME StandardDate;
@@ -3266,7 +3265,6 @@ static int WINAPI expGetSystemTime(SYSTEMTIME* systime)
 #define SECS_1601_TO_1970  ((369 * 365 + 89) * 86400ULL)
 static void WINAPI expGetSystemTimeAsFileTime(FILETIME* systime)
 {
-    struct tm *local_tm;
     struct timeval tv;
     unsigned long long secs;
 
@@ -3281,7 +3279,7 @@ static void WINAPI expGetSystemTimeAsFileTime(FILETIME* systime)
 
 static int WINAPI expGetEnvironmentVariableA(const char* name, char* field, int size)
 {
-    char *p;
+    //char *p;
     //    printf("%s %x %x\n", name, field, size);
     if(field)field[0]=0;
     /*
@@ -3705,7 +3703,7 @@ static HANDLE WINAPI expCreateFileA(LPCSTR cs1,DWORD i1,DWORD i2,
     if (strstr(cs1, "WINNOV.bmp"))
     {
 	int r;
-	r=open("/dev/null", 0);
+	r=open("/dev/null", O_RDONLY);
 	return r;
     }
 
@@ -3806,7 +3804,7 @@ static WIN_BOOL WINAPI expWriteFile(HANDLE h,LPCVOID pv,DWORD size,LPDWORD wr,LP
 static DWORD  WINAPI expSetFilePointer(HANDLE h, LONG val, LPLONG ext, DWORD whence)
 {
     int wh;
-    dbgprintf("SetFilePointer(%d, 0x%x, 0x%x = %d, %d)\n", h, val, ext, *ext, whence);
+    dbgprintf("SetFilePointer(%d, 0x%x, 0x%x = %d, %d)\n", h, val, ext, ext ? *ext : NULL, whence);
     //why would DLL want temporary file with >2Gb size?
     switch(whence)
     {
@@ -3987,7 +3985,6 @@ static HRESULT WINAPI expCoInitializeEx(LPVOID lpReserved, DWORD dwCoInit)
 }
 
 // required by PIM1 codec (used by win98 PCTV Studio capture sw)
-#define COINIT_APARTMENTTHREADED 0x02
 static HRESULT WINAPI expCoInitialize(
 				      LPVOID lpReserved	/* [in] pointer to win32 malloc interface
 				      (obsolete, should be NULL) */
@@ -4168,8 +4165,8 @@ static int exp_initterm(int v1, int v2)
 }
 #else
 /* merged from wine - 2002.04.21 */
-typedef void (*_INITTERMFUNC)();
-static int exp_initterm(_INITTERMFUNC *start, _INITTERMFUNC *end)
+typedef void (*INITTERMFUNC)();
+static int exp_initterm(INITTERMFUNC *start, INITTERMFUNC *end)
 {
     dbgprintf("_initterm(0x%x, 0x%x) %p\n", start, end, *start);
     while (start < end)
@@ -4204,6 +4201,16 @@ static int exp_initterm(_INITTERMFUNC *start, _INITTERMFUNC *end)
     return 0;
 }
 #endif
+
+/* Fake _initterm_e from msvcr80.dll, needed by sirenacm.dll
+ * NOTE: If I make this an alias for _initterm, then sirenacm.dll tries to call
+   other uninmplemented functions; keep this in mind if some future codec needs
+   a real implementation of this function */
+static int exp_initterm_e(INITTERMFUNC *start, INITTERMFUNC *end)
+{
+    dbgprintf("_initterm_e(0x%x, 0x%x)\n", start, end);
+    return 0;
+}
 
 static void* exp__dllonexit()
 {
@@ -4430,12 +4437,6 @@ static double expcos(double x)
 {
     /*printf("Cos %f => %f  0x%Lx\n", x, cos(x), *((int64_t*)&x));*/
     return cos(x);
-}
-
-/* doens't work */
-static long exp_ftol_wrong(double x)
-{
-    return (long) x;
 }
 
 #else
@@ -5002,6 +5003,30 @@ static WIN_BOOL WINAPI expSHGetSpecialFolderPathA(HWND hwndOwner,
     return 0;
 }
 
+// Fake implementation of _decode_pointer from msvcr80.dll, needed by sirenacm.dll
+// NOTE: undocumented function, probably the declaration is not right
+static int exp_decode_pointer(void *ptr)
+{
+    dbgprintf("_decode_pointer (0x%08x)\n", ptr);
+    return 0;
+}
+
+/* Fake implementation of sdt::_Lockit::_Lockit(void) from msvcp60.dll
+   Needed by SCLS.DLL */
+static int exp_0Lockit_dummy(void)
+{
+    dbgprintf("0Lockit_dummy (??0_Lockit@std@@QAE@XZ)\n");
+    return 0;
+}
+
+/* Fake implementation of sdt::_Lockit::~_Lockit(void) from msvcp60.dll
+   Needed by SCLS.DLL */
+static int exp_1Lockit_dummy(void)
+{
+    dbgprintf("1Lockit_dummy (??1_Lockit@std@@QAE@XZ)\n");
+    return 0;
+}
+
 struct exports
 {
     char name[64];
@@ -5352,6 +5377,8 @@ struct exports exp_ole32[]={
     FF(CoCreateFreeThreadedMarshaler,-1)
     FF(CoCreateInstance, -1)
     FF(CoInitialize, -1)
+    FF(CoInitializeEx, -1)
+    FF(CoUninitialize, -1)
     FF(CoTaskMemAlloc, -1)
     FF(CoTaskMemFree, -1)
     FF(StringFromGUID2, -1)
@@ -5445,6 +5472,22 @@ struct exports exp_shlwapi[]={
     FF(PathFindFileNameA, -1)
 };
 
+struct exports exp_msvcr80[]={
+    FF(_CIpow,-1)
+    FF(_CIsin,-1)
+    FF(_CIcos,-1)
+    FF(_CIsqrt,-1)
+    FF(memset,-1)
+    FF(_initterm_e, -1)
+    FF(_initterm, -1)
+    FF(_decode_pointer, -1)
+};
+
+struct exports exp_msvcp60[]={
+    {"??0_Lockit@std@@QAE@XZ", -1, exp_0Lockit_dummy},
+    {"??1_Lockit@std@@QAE@XZ", -1, exp_1Lockit_dummy}
+};
+
 #define LL(X) \
     {#X".dll", sizeof(exp_##X)/sizeof(struct exports), exp_##X},
 
@@ -5470,6 +5513,8 @@ struct libs libraries[]={
 #endif
     LL(comdlg32)
     LL(shlwapi)
+    LL(msvcr80)
+    LL(msvcp60)
     LL(shell32)
 };
 
@@ -5596,7 +5641,6 @@ no_dll:
 
 void* LookupExternalByName(const char* library, const char* name)
 {
-    char* answ;
     int i,j;
     //   return (void*)ext_unknown;
     if(library==0)

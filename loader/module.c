@@ -5,7 +5,6 @@
  *
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: module.c 21306 2006-11-27 02:44:06Z nplourde $
  *
  */
 
@@ -27,7 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
+#endif
 #include <inttypes.h>
 
 #include "wine/windef.h"
@@ -140,8 +141,11 @@ static WIN_BOOL MODULE_InitDll( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
 {
     WIN_BOOL retv = TRUE;
 
+    #ifdef DEBUG
     static LPCSTR typeName[] = { "PROCESS_DETACH", "PROCESS_ATTACH",
                                  "THREAD_ATTACH", "THREAD_DETACH" };
+    #endif
+
     assert( wm );
 
 
@@ -214,7 +218,7 @@ static WIN_BOOL MODULE_InitDll( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
 static WIN_BOOL MODULE_DllProcessAttach( WINE_MODREF *wm, LPVOID lpReserved )
 {
     WIN_BOOL retv = TRUE;
-    int i;
+    //int i;
     assert( wm );
 
     /* prevent infinite recursion in case of cyclical dependencies */
@@ -275,7 +279,7 @@ static WIN_BOOL MODULE_DllProcessAttach( WINE_MODREF *wm, LPVOID lpReserved )
 static void MODULE_DllProcessDetach( WINE_MODREF* wm, WIN_BOOL bForceDetach, LPVOID lpReserved )
 {
     //    WINE_MODREF *wm=local_wm;
-    modref_list* l = local_wm;
+    //modref_list* l = local_wm;
     wm->flags &= ~WINE_MODREF_PROCESS_ATTACHED;
     MODULE_InitDll( wm, DLL_PROCESS_DETACH, lpReserved );
 /*    while (l)
@@ -302,7 +306,6 @@ static WINE_MODREF *MODULE_LoadLibraryExA( LPCSTR libname, HFILE hfile, DWORD fl
 {
 	DWORD err = GetLastError();
 	WINE_MODREF *pwm;
-	int i;
 //	module_loadorder_t *plo;
 
         SetLastError( ERROR_FILE_NOT_FOUND );
@@ -427,7 +430,7 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
 		}
 	}
 
-	if (!wm)
+	if (!wm && !strstr(checked, "avisynth.dll"))
 	    printf("Win32 LoadLibrary failed to load: %s\n", checked);
 
 #define RVA(x) ((char *)wm->module+(unsigned int)(x))
@@ -705,8 +708,8 @@ return "???";
 
 static int c_level=0;
 
-static int dump_component(char* name,int type,void* _orig, ComponentParameters *params,void** glob){
-    int ( *orig)(ComponentParameters *params, void** glob) = _orig;
+static int dump_component(char* name, int type, void* orig, ComponentParameters *params,void** glob){
+    int ( *orig)(ComponentParameters *params, void** glob) = orig;
     int ret,i;
 
     fprintf(stderr,"%*sComponentCall: %s  flags=0x%X  size=%d  what=0x%X %s\n",3*c_level,"",name,params->flags, params->paramSize, params->what, component_func(params->what));
@@ -945,8 +948,10 @@ static int report_func(void *stack_base, int stack_size, reg386_t *reg, uint32_t
 
 static int report_func_ret(void *stack_base, int stack_size, reg386_t *reg, uint32_t *flags)
 {
-  int i;
+  //int i;
+#ifdef DEBUG_QTX_API
   short err;
+#endif
 
   // restore ret addr:
   --ret_i;
@@ -1052,8 +1057,8 @@ FARPROC MODULE_GetProcAddress(
 #endif
 
     if(!strcmp(function,"theQuickTimeDispatcher")
-//      || !strcmp(function,"_CallComponentFunctionWithStorage")
-//      || !strcmp(function,"_CallComponent")
+//      || !strcmp(function,"CallComponentFunctionWithStorage")
+//      || !strcmp(function,"CallComponent")
       ){
 	fprintf(stderr,"theQuickTimeDispatcher catched -> %p\n",retproc);
       report_entry = report_func;
