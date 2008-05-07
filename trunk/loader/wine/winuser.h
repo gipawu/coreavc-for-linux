@@ -1,5 +1,5 @@
-#ifndef _WINUSER_
-#define _WINUSER_
+#ifndef MPLAYER_WINUSER_H
+#define MPLAYER_WINUSER_H
 
 #ifndef RC_INVOKED
 #include <stdarg.h>
@@ -1824,7 +1824,7 @@ typedef struct
 DECL_WINELIB_TYPE_AW(MSGBOXPARAMS)
 DECL_WINELIB_TYPE_AW(LPMSGBOXPARAMS)
 
-typedef struct _numberfmt32a {
+typedef struct numberfmt32a {
     UINT NumDigits;
     UINT LeadingZero;
     UINT Grouping;
@@ -1833,7 +1833,7 @@ typedef struct _numberfmt32a {
     UINT NegativeOrder;
 } NUMBERFMTA;
 
-typedef struct _numberfmt32w {
+typedef struct numberfmt32w {
     UINT NumDigits;
     UINT LeadingZero;
     UINT Grouping;
@@ -1842,7 +1842,7 @@ typedef struct _numberfmt32w {
     UINT NegativeOrder;
 } NUMBERFMTW;
 
-typedef struct _currencyfmt32a
+typedef struct currencyfmt32a
 {   
 	UINT      NumDigits;   
 	UINT      LeadingZero; 
@@ -1854,7 +1854,7 @@ typedef struct _currencyfmt32a
 	LPCSTR    lpCurrencySymbol;
 } CURRENCYFMTA; 
 
-typedef struct _currencyfmt32w
+typedef struct currencyfmt32w
 {   
 	UINT      NumDigits;   
 	UINT      LeadingZero; 
@@ -2926,4 +2926,4 @@ VOID        WINAPI ScreenSwitchEnable16(WORD);
 }
 #endif
 
-#endif /* _WINUSER_ */
+#endif /* MPLAYER_WINUSER_H */

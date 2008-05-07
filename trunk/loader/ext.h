@@ -1,11 +1,10 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: ext.h 18786 2006-06-22 13:34:00Z diego $
  */
 
-#ifndef loader_ext_h
-#define loader_ext_h
+#ifndef MPLAYER_EXT_H
+#define MPLAYER_EXT_H
 
 #include "wine/windef.h"
 
@@ -17,4 +16,4 @@ extern int FILE_munmap( LPVOID start, DWORD size_high, DWORD size_low );
 extern int wcsnicmp(const unsigned short* s1, const unsigned short* s2, int n);
 extern int __vprintf( const char *format, ... );
 
-#endif
+#endif /* MPLAYER_EXT_H */

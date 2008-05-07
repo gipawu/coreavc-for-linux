@@ -9,11 +9,10 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: loader.h 18786 2006-06-22 13:34:00Z diego $
  */
 
-#ifndef _LOADER_H
-#define _LOADER_H
+#ifndef MPLAYER_LOADER_H
+#define MPLAYER_LOADER_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -25,10 +24,10 @@ extern "C" {
 #include "wine/vfw.h"
 #include "wine/msacm.h"
 
-unsigned int _GetPrivateProfileIntA(const char* appname, const char* keyname, int default_value, const char* filename);
-int _GetPrivateProfileStringA(const char* appname, const char* keyname,
+unsigned int GetPrivateProfileIntA_(const char* appname, const char* keyname, int default_value, const char* filename);
+int GetPrivateProfileStringA_(const char* appname, const char* keyname,
 	const char* def_val, char* dest, unsigned int len, const char* filename);
-int _WritePrivateProfileStringA(const char* appname, const char* keyname,
+int WritePrivateProfileStringA_(const char* appname, const char* keyname,
 	const char* string, const char* filename);
 
 INT WINAPI LoadStringA( HINSTANCE instance, UINT resource_id,
@@ -37,5 +36,5 @@ INT WINAPI LoadStringA( HINSTANCE instance, UINT resource_id,
 #ifdef __cplusplus
 }
 #endif
-#endif /* __LOADER_H */
 
+#endif /* MPLAYER_LOADER_H */

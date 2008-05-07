@@ -1,12 +1,12 @@
-#ifndef DS_OUTPUTPIN_H
-#define DS_OUTPUTPIN_H
+#ifndef MPLAYER_OUTPUTPIN_H
+#define MPLAYER_OUTPUTPIN_H
 
 /* "output pin" - the one that connects to output of filter. */
 
 #include "allocator.h"
 
-typedef struct _COutputMemPin COutputMemPin;
-typedef struct _COutputPin COutputPin;
+typedef struct COutputMemPin COutputMemPin;
+typedef struct COutputPin COutputPin;
 
 /**
  Callback routine for copying samples from pin into filter
@@ -15,7 +15,7 @@ typedef struct _COutputPin COutputPin;
 */
 typedef  HRESULT STDCALL (*SAMPLEPROC)(void* pUserData,IMediaSample*sample);
 
-struct _COutputPin
+struct COutputPin
 {
     IPin_vt* vt;
     DECLARE_IUNKNOWN();
@@ -29,4 +29,4 @@ struct _COutputPin
 
 COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* amt,SAMPLEPROC SampleProc,void* pUserData);
 
-#endif /* DS_OUTPUTPIN_H */
+#endif /* MPLAYER_OUTPUTPIN_H */

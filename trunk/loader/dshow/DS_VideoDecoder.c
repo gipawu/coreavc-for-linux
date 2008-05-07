@@ -11,7 +11,7 @@
 #include "libwin32.h"
 #include "DS_Filter.h"
 
-struct _DS_VideoDecoder
+struct DS_VideoDecoder
 {
     IVideoDecoder iv;
     
@@ -30,16 +30,16 @@ static SampleProcUserData sampleProcData;
 
 #include "DS_VideoDecoder.h"
 
-#include "../wine/winerror.h"
+#include "wine/winerror.h"
 #ifdef WIN32_LOADER
-#include "../ldt_keeper.h"
+#include "ldt_keeper.h"
 #endif
 
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/types.h>
-#ifndef __MINGW32__
+#ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
 #endif
 #include <stdio.h>
@@ -54,9 +54,9 @@ static SampleProcUserData sampleProcData;
 int DS_VideoDecoder_GetCapabilities(DS_VideoDecoder *this)
 {return this->m_Caps;}
 	    
-typedef struct _ct ct;
+typedef struct ct ct;
 
-struct _ct {
+struct ct {
 		unsigned int bits;
 		fourcc_t fcc;
 		const GUID *subtype;
@@ -230,7 +230,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
           this->m_sOurType.cbFormat = size;
         }
 
-	this->m_sVhdr2 = (VIDEOINFOHEADER2*)(malloc(sizeof(VIDEOINFOHEADER2)+12));
+ 	this->m_sVhdr2 = malloc(sizeof(VIDEOINFOHEADER2)+12);
         memset((char*)this->m_sVhdr2, 0, sizeof(VIDEOINFOHEADER2)+12);
 	this->m_sVhdr2->rcSource = this->m_sVhdr->rcSource;
 	this->m_sVhdr2->rcTarget = this->m_sVhdr->rcTarget;
@@ -365,7 +365,6 @@ void DS_VideoDecoder_Destroy(DS_VideoDecoder *this)
 
 void DS_VideoDecoder_StartInternal(DS_VideoDecoder *this)
 {
-    ALLOCATOR_PROPERTIES props, props1;
     Debug printf("DS_VideoDecoder_StartInternal\n");
     //cout << "DSSTART" << endl;
     this->m_pDS_Filter->m_pAll->vt->Commit(this->m_pDS_Filter->m_pAll);
@@ -522,7 +521,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoDecoder *this, int bits, unsigned int csp
     HRESULT result;
     ALLOCATOR_PROPERTIES props,props1;
     int should_test=1;
-    int stoped = 0;   
+    int stopped = 0;
     
     Debug printf("DS_VideoDecoder_SetDestFmt (%p, %d, %d)\n",this,bits,(int)csp);
         
@@ -698,7 +697,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoDecoder *this, int bits, unsigned int csp
     {
 	DS_VideoDecoder_StopInternal(this);
         this->iv.m_State = STOP;
-        stoped = true;
+        stopped = true;
     }
 
     this->m_pDS_Filter->m_pInputPin->vt->Disconnect(this->m_pDS_Filter->m_pInputPin);
@@ -739,7 +738,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoDecoder *this, int bits, unsigned int csp
 	return -1;
     }
 
-    if (stoped)
+    if (stopped)
     {
 	DS_VideoDecoder_StartInternal(this);
         this->iv.m_State = START; 

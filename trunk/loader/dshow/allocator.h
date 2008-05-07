@@ -1,13 +1,13 @@
-#ifndef DS_ALLOCATOR_H
-#define DS_ALLOCATOR_H
+#ifndef MPLAYER_ALLOCATOR_H
+#define MPLAYER_ALLOCATOR_H
 
 #include "interfaces.h"
 #include "cmediasample.h"
 
-typedef struct _avm_list_t avm_list_t;
-typedef struct _MemAllocator MemAllocator;
+typedef struct avm_list_t avm_list_t;
+typedef struct MemAllocator MemAllocator;
 
-struct _MemAllocator
+struct MemAllocator
 {
     IMemAllocator_vt* vt;
     DECLARE_IUNKNOWN();
@@ -24,4 +24,4 @@ struct _MemAllocator
 
 MemAllocator* MemAllocatorCreate(void);
 
-#endif /* DS_ALLOCATOR_H */
+#endif /* MPLAYER_ALLOCATOR_H */

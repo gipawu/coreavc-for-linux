@@ -15,16 +15,20 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: ldt_keeper.c 21306 2006-11-27 02:44:06Z nplourde $
  */
 
+#include "config.h"
 #include "ldt_keeper.h"
 
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
+#else
+#include "osdep/mmap.h"
+#endif
 #include <sys/types.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -56,6 +60,11 @@ int modify_ldt(int func, void *ptr, unsigned long bytecount);
 #if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
 #include <machine/segments.h>
 #include <machine/sysarch.h>
+#endif
+
+#if defined(__APPLE__)
+#include <architecture/i386/table.h>
+#include <i386/user_ldt.h>
 #endif
 
 #ifdef __svr4__

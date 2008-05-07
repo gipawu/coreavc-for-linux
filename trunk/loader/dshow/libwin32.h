@@ -1,5 +1,5 @@
-#ifndef __LIBWIN32_H
-#define __LIBWIN32_H
+#ifndef MPLAYER_LIBWIN32_H
+#define MPLAYER_LIBWIN32_H
 
 #define VFW_E_NOT_RUNNING               0x80040226
 
@@ -14,21 +14,21 @@
 typedef uint32_t fourcc_t;
 
 /*
-typedef struct _FatalError
+typedef struct FatalError
 {
     FatalError();
     void PrintAll() {}
 }FatalError;
 */
 
-typedef struct _CodecInfo
+typedef struct CodecInfo
 {
     char* dll;
     GUID* guid;
 }CodecInfo;
 
 
-typedef struct _CImage // public  your_libvo_mem
+typedef struct CImage // public  your_libvo_mem
 {
     char* ptr;
     
@@ -53,7 +53,7 @@ struct BitmapInfo : public BITMAPINFOHEADER
 };
 #endif
 
-typedef struct _IAudioDecoder
+typedef struct IAudioDecoder
 {
     WAVEFORMATEX in_fmt;
     CodecInfo  record;
@@ -96,7 +96,7 @@ struct IAudioEncoder
 	START,
     };
 
-typedef struct _BitmapInfo
+typedef struct BitmapInfo
 {
     long 	biSize;
     long  	biWidth;
@@ -112,7 +112,7 @@ typedef struct _BitmapInfo
     int 	colors[3];    
 } BitmapInfo;
 
-typedef struct _IVideoDecoder
+typedef struct IVideoDecoder
 {
     int VBUFSIZE;
     int QMARKHI;
@@ -253,4 +253,4 @@ struct IRtConfig
 #define fccYVU9 mmioFOURCC('Y', 'V', 'U', '9')/* Planar 4:1:0 */
 #define fccIF09 mmioFOURCC('I', 'F', '0', '9')/* Planar 4:1:0 + delta */
 
-#endif
+#endif /* MPLAYER_LIBWIN32_H */

@@ -4,8 +4,8 @@
  * Copyright 1995 Alexandre Julliard
  */
 
-#ifndef __WINE_MODULE_H
-#define __WINE_MODULE_H
+#ifndef MPLAYER_MODULE_H
+#define MPLAYER_MODULE_H
 
 #include "windef.h"
 #include "pe_image.h"
@@ -82,10 +82,10 @@ typedef enum {
 	MODULE32_ELFDLL
 } MODULE32_TYPE;
 
-typedef struct _wine_modref
+typedef struct wine_modref
 {
-	struct _wine_modref	*next;
-	struct _wine_modref	*prev;
+	struct wine_modref	*next;
+	struct wine_modref	*prev;
 	MODULE32_TYPE		type;
 	union {
 		PE_MODREF	pe;
@@ -95,7 +95,7 @@ typedef struct _wine_modref
 	HMODULE			module;
 
 	int			nDeps;
-	struct _wine_modref	**deps;
+	struct wine_modref	**deps;
 
 	int			flags;
 	int			refCount;
@@ -146,4 +146,4 @@ extern WINE_MODREF *MODULE_FindModule( LPCSTR path );
 /* resource.c */
 extern INT       WINAPI AccessResource(HMODULE,HRSRC); 
 
-#endif  /* __WINE_MODULE_H */
+#endif /* MPLAYER_MODULE_H */

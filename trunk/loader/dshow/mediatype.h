@@ -3,10 +3,25 @@
     AM_MEDIA_TYPE service functions declarations
 -------------------------------------------------------------------
 */
-#ifndef DS_MEDIATYPE_H
-#define DS_MEDIATYPE_H
+
+#ifndef MPLAYER_MEDIATYPE_H
+#define MPLAYER_MEDIATYPE_H
+
 #include "guids.h"
                   
+typedef struct __attribute__((__packed__)) MediaType
+{
+    GUID	majortype;		//0x0
+    GUID	subtype;		//0x10
+    int		bFixedSizeSamples;	//0x20
+    int		bTemporalCompression;	//0x24
+    unsigned long lSampleSize;		//0x28
+    GUID	formattype;		//0x2c
+    IUnknown*	pUnk;			//0x3c
+    unsigned long cbFormat;		//0x40
+    char*	pbFormat;		//0x44
+} AM_MEDIA_TYPE;
+
 /**
  * \brief print info from AM_MEDIA_TYPE structure
  * =param[in] label short lable for media type
@@ -78,4 +93,4 @@ AM_MEDIA_TYPE* CreateMediaType(const AM_MEDIA_TYPE* pSrc);
  */
 int CompareMediaTypes(const AM_MEDIA_TYPE * pmt1, const AM_MEDIA_TYPE * pmt2, int bWildcards);
 
-#endif // DS_MEDIA_TYPE_H
+#endif /* MPLAYER_MEDIA_TYPE_H */

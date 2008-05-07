@@ -11,7 +11,6 @@
  *
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: pe_image.c 23754 2007-07-09 19:50:36Z diego $
  *
  */
 /* Notes:
@@ -52,6 +51,8 @@
 #include <fcntl.h>
 #ifdef HAVE_SYS_MMAN_H
 #include <sys/mman.h>
+#else
+#include "osdep/mmap.h"
 #endif
 #include "wine/windef.h"
 #include "wine/winbase.h"
@@ -66,9 +67,6 @@
 #define RVA(x) ((void *)((char *)load_addr+(unsigned int)(x)))
 
 #define AdjustPtr(ptr,delta) ((char *)(ptr) + (delta))
-
-extern void* LookupExternal(const char* library, int ordinal);
-extern void* LookupExternalByName(const char* library, const char* name);
 
 static void dump_exports( HMODULE hModule )
 { 
@@ -100,17 +98,17 @@ static void dump_exports( HMODULE hModule )
       if (!*function) continue;  
       if (TRACE_ON(win32))
       {
-	DPRINTF( "%4ld %08lx %p", i + pe_exports->Base, *function, RVA(*function) );
+	dbg_printf( "%4ld %08lx %p", i + pe_exports->Base, *function, RVA(*function) );
 	
 	for (j = 0; j < pe_exports->NumberOfNames; j++)
           if (ordinal[j] == i)
           {
-              DPRINTF( "  %s", (char*)RVA(name[j]) );
+              dbg_printf( "  %s", (char*)RVA(name[j]) );
               break;
           }
 	if ((*function >= rva_start) && (*function <= rva_end))
-	  DPRINTF(" (forwarded -> %s)", (char *)RVA(*function));
-	DPRINTF("\n");
+	  dbg_printf(" (forwarded -> %s)", (char *)RVA(*function));
+	dbg_printf("\n");
       }
   }
 }
@@ -287,7 +285,6 @@ static DWORD fixup_imports( WINE_MODREF *wm )
      */
  
     for (i = 0, pe_imp = pem->pe_import; pe_imp->Name ; pe_imp++) {
-    	WINE_MODREF		*wmImp;
 	IMAGE_IMPORT_BY_NAME	*pe_name;
 	PIMAGE_THUNK_DATA	import_list,thunk_list;
  	char			*name = (char *) RVA(pe_imp->Name);
@@ -442,7 +439,7 @@ HMODULE PE_LoadImage( int handle, LPCSTR filename, WORD *version )
     IMAGE_NT_HEADERS *nt;
     IMAGE_SECTION_HEADER *pe_sec;
     IMAGE_DATA_DIRECTORY *dir;
-    BY_HANDLE_FILE_INFORMATION bhfi;
+//    BY_HANDLE_FILE_INFORMATION bhfi;
     int	i, rawsize, lowest_va, vma_size, file_size = 0;
     DWORD load_addr = 0, aoep, reloc = 0;
 //    struct get_read_fd_request *req = get_req_buffer();
@@ -489,19 +486,19 @@ HMODULE PE_LoadImage( int handle, LPCSTR filename, WORD *version )
     
     if ( nt->FileHeader.Machine != IMAGE_FILE_MACHINE_I386 )
     {
-        MESSAGE("Trying to load PE image for unsupported architecture (");
+        dbg_printf("Trying to load PE image for unsupported architecture (");
         switch (nt->FileHeader.Machine)
         {
-        case IMAGE_FILE_MACHINE_UNKNOWN: MESSAGE("Unknown"); break;
-        case IMAGE_FILE_MACHINE_I860:    MESSAGE("I860"); break;
-        case IMAGE_FILE_MACHINE_R3000:   MESSAGE("R3000"); break;
-        case IMAGE_FILE_MACHINE_R4000:   MESSAGE("R4000"); break;
-        case IMAGE_FILE_MACHINE_R10000:  MESSAGE("R10000"); break;
-        case IMAGE_FILE_MACHINE_ALPHA:   MESSAGE("Alpha"); break;
-        case IMAGE_FILE_MACHINE_POWERPC: MESSAGE("PowerPC"); break;
-        default: MESSAGE("Unknown-%04x", nt->FileHeader.Machine); break;
+        case IMAGE_FILE_MACHINE_UNKNOWN: dbg_printf("Unknown"); break;
+        case IMAGE_FILE_MACHINE_I860:    dbg_printf("I860"); break;
+        case IMAGE_FILE_MACHINE_R3000:   dbg_printf("R3000"); break;
+        case IMAGE_FILE_MACHINE_R4000:   dbg_printf("R4000"); break;
+        case IMAGE_FILE_MACHINE_R10000:  dbg_printf("R10000"); break;
+        case IMAGE_FILE_MACHINE_ALPHA:   dbg_printf("Alpha"); break;
+        case IMAGE_FILE_MACHINE_POWERPC: dbg_printf("PowerPC"); break;
+        default: dbg_printf("Unknown-%04x", nt->FileHeader.Machine); break;
         }
-        MESSAGE(")\n");
+        dbg_printf(")\n");
         goto error;
     }
 
@@ -546,7 +543,8 @@ HMODULE PE_LoadImage( int handle, LPCSTR filename, WORD *version )
      *         to work (until we support shared sections properly).
      */
 
-    if ( nt->OptionalHeader.ImageBase & 0x80000000 )
+    if ( nt->OptionalHeader.ImageBase & 0x80000000 &&
+        !strstr(filename, "xanlib.dll"))
     {
         HMODULE sharedMod = (HMODULE)nt->OptionalHeader.ImageBase; 
         IMAGE_NT_HEADERS *sharedNt = (PIMAGE_NT_HEADERS)
@@ -702,7 +700,6 @@ WINE_MODREF *PE_CreateModule( HMODULE hModule,
     IMAGE_EXPORT_DIRECTORY *pe_export = NULL;
     IMAGE_RESOURCE_DIRECTORY *pe_resource = NULL;
     WINE_MODREF *wm;
-    int	result;
 
 
     
@@ -973,16 +970,4 @@ WIN_BOOL PE_InitDLL( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
     }
 
     return retv;
-}
-
-static LPVOID
-_fixup_address(PIMAGE_OPTIONAL_HEADER opt,int delta,LPVOID addr) {
-	if (	((DWORD)addr>opt->ImageBase) &&
-		((DWORD)addr<opt->ImageBase+opt->SizeOfImage)
-	)
-		
-		return (LPVOID)(((DWORD)addr)+delta);
-	else
-		
-		return addr;
 }

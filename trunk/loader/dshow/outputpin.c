@@ -1,7 +1,6 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: outputpin.c 22416 2007-03-02 18:52:10Z voroshil $
  */
 
 #include "wine/winerror.h"
@@ -33,7 +32,7 @@ typedef struct CEnumMediaTypes
 /**
    IMemOutput interface implementation
 */
-struct _COutputMemPin
+struct COutputMemPin
 {
     IMemInputPin_vt* vt;
     DECLARE_IUNKNOWN();
@@ -758,7 +757,7 @@ static HRESULT STDCALL COutputMemPin_ReceiveMultiple(IMemInputPin * This,
 					    /* [out] */ long *nSamplesProcessed)
 {
     HRESULT hr;
-    Debug printf("COutputMemPin_ReceiveMultiple(%p) %d\n", This,nSamples);
+    Debug printf("COutputMemPin_ReceiveMultiple(%p) %ld\n", This,nSamples);
     for(*nSamplesProcessed=0; *nSamplesProcessed < nSamples; *nSamplesProcessed++) {
          hr = This->vt->Receive(This,pSamples[*nSamplesProcessed]);
          if (hr != S_OK) break;

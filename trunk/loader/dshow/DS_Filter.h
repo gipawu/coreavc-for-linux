@@ -1,5 +1,5 @@
-#ifndef DS_FILTER_H
-#define DS_FILTER_H
+#ifndef MPLAYER_DS_FILTER_H
+#define MPLAYER_DS_FILTER_H
 
 #include "inputpin.h"
 #include "outputpin.h"
@@ -20,8 +20,8 @@ typedef struct {
    and then set up m_pAll.
  **/
 
-typedef struct _DS_Filter DS_Filter;
-struct _DS_Filter
+typedef struct DS_Filter DS_Filter;
+struct DS_Filter
 {
     int m_iHandle;
     IBaseFilter* m_pFilter;
@@ -49,4 +49,4 @@ void DS_Filter_Destroy(DS_Filter* This);
 }
 #endif
 
-#endif /* DS_FILTER_H */
+#endif /* MPLAYER_DS_FILTER_H */

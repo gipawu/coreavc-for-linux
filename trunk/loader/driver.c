@@ -1,7 +1,6 @@
 /*
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: driver.c 21277 2006-11-26 18:33:41Z diego $
  */
 
 #include "config.h"
@@ -149,7 +148,6 @@ void DrvClose(HDRVR hDriver)
 HDRVR DrvOpen(LPARAM lParam2)
 {
     NPDRVR hDriver;
-    int i;
     char unknown[0x124];
     const char* filename = (const char*) ((ICOPEN*) lParam2)->pV1Reserved;
 

@@ -11,7 +11,6 @@
  *
  * Modified for use with MPlayer, detailed changelog at
  * http://svn.mplayerhq.hu/mplayer/trunk/
- * $Id: pe_resource.c 18786 2006-06-22 13:34:00Z diego $
  *
  */
 #include "config.h"
