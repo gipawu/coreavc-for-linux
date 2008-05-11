@@ -300,7 +300,13 @@ static HRESULT STDCALL COutputPin_ReceiveConnection(IPin * This,
 						    /* [in] */ IPin *pConnector,
 						    /* [in] */ const AM_MEDIA_TYPE *pmt)
 {
+    COutputPin *op = (COutputPin*)This;
     Debug printf("COutputPin_ReceiveConnection(%p) called\n", This);
+    if(op->restrict_media_type && (memcmp(&pmt->majortype, &op->type.majortype, sizeof(GUID)) ||
+                                   memcmp(&pmt->subtype, &op->type.subtype, sizeof(GUID)))) {
+      Debug printf("Refusing type 0x%08x\n", pmt->subtype.f1);
+      return 0x8004022A; //VFW_E_TYPE_NOT_ACCEPT
+    }
     ((COutputPin*)This)->remote = pConnector;
     return 0;
 }
@@ -439,7 +445,13 @@ static HRESULT STDCALL COutputPin_QueryId(IPin * This,
 static HRESULT STDCALL COutputPin_QueryAccept(IPin * This,
 					      /* [in] */ const AM_MEDIA_TYPE *pmt)
 {
+    COutputPin *op = (COutputPin*)This;
     output_unimplemented("COutputPin_QueryAccept", This);
+    if(op->restrict_media_type && (memcmp(&pmt->majortype, &op->type.majortype, sizeof(GUID)) ||
+                                   memcmp(&pmt->subtype, &op->type.subtype, sizeof(GUID)))) {
+      Debug printf("Refusing type 0x%08x\n", pmt->subtype.f1);
+      return S_FALSE;
+    }
     if(memcmp(&pmt->formattype, &FORMAT_VideoInfo, sizeof(GUID))) {
       return S_OK;
     }
@@ -789,6 +801,7 @@ static HRESULT STDCALL COutputMemPin_ReceiveCanBlock(IMemInputPin * This)
 static void COutputPin_SetNewFormat(COutputPin* This, const AM_MEDIA_TYPE* amt)
 {
     CopyMediaType(&(This->type),amt);
+    This->restrict_media_type = 1;
 }
 
 /**
@@ -923,6 +936,7 @@ COutputPin* COutputPinCreate(const AM_MEDIA_TYPE* amt,SAMPLEPROC SampleProc,void
 
     This->refcount = 1;
     This->remote = 0;
+    This->restrict_media_type = 0;
     CopyMediaType(&(This->type),amt);
 
     This->vt->QueryInterface = COutputPin_QueryInterface;
