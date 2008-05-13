@@ -1227,6 +1227,8 @@ static void* WINAPI expHeapAlloc(HANDLE heap, int flags, int size)
      to page boundaries thus we should simulate this
      **/
     //if (size == 22276) trapbug();
+    //CoreAVCDecoder 1.7.0 doesn't properly zero memory, causing subtle issues
+    flags |= HEAP_ZERO_MEMORY;
     z=my_mreq((size + 0xfff) & 0x7ffff000, (flags & HEAP_ZERO_MEMORY));
     if(z==0)
 	printf("HeapAlloc failure\n");
