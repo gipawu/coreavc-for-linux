@@ -14,7 +14,7 @@ If you are using dshowserver (for mythtv) do:
 {{{
 export REGISTRY=$HOME/.mplayer/registry32
 }}}
-If you are using mplayer do:
+If you are using mplayer or xine do:
 {{{
 export REGISTRY=$HOME/.mplayer/registry
 }}}
