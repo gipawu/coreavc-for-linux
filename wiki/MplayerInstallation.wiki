@@ -54,9 +54,17 @@ videocodec coreavc13
 5) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
 
 6) Install CoreAVC license info as documented in [RegisterCoreAVC]
+  * NOTE: registercodec doesn't build with current mplayer SVN due to changes in the build process.  To build it, do this"
+  {{{
+cd loader && gcc -I. -I.. -o registercodec modify_reg.c
+}}}
 
 = Playing tips =
 
 to use coreavc, you may need to add '-vc coreavc13' (assuming you use the above codecs.conf options)
 
 you may also need to use '-demuxer lavf' for some formats (TS streams for example)
+
+with current mplayer you may also need -no-correct-pts to prevent jerky playback.
+
+NOTE: Do not try to benchmark 1.7.0.  The performance seen in benchmarking does not equate to real-world performance.  I am working on fixing this.
