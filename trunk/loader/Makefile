@@ -18,8 +18,9 @@ SRCS_COMMON += dshow/DS_Filter.c \
                dshow/outputpin.c
 OBJS_COMMON    += $(addsuffix .o, $(basename $(SRCS_COMMON)) )
 
-CFLAGS=-Icompat -Idshow -Wdisabled-optimization -Wno-pointer-sign -Wdeclaration-after-statement -I. -Wall -Wno-switch -Wpointer-arith -Wredundant-decls -O0 -pipe -ffast-math -fomit-frame-pointer -D_LARGEFILE_SOURCE
-CFLAGS+=-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer -g
+CFLAGS=-Icompat -Idshow -Wdisabled-optimization -Wno-pointer-sign -Wdeclaration-after-statement -I. -Wall -Wno-switch -Wpointer-arith -Wredundant-decls -pipe -ffast-math -fomit-frame-pointer -D_LARGEFILE_SOURCE
+CFLAGS+=-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
+CFLAGS+=-DUSE_SHARED_MEM -O2
 
 all: $(LIBNAME_COMMON) registercodec
 

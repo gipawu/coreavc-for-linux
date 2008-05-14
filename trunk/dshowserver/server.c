@@ -11,6 +11,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "dshow/DSVD_extern.h"
 
@@ -41,18 +42,36 @@ void make_bih(BITMAPINFOHEADER *bih, uint32_t w, uint32_t h, uint32_t tag) {
   bih->biClrUsed=0;
   bih->biClrImportant=0;
 }
-  
+
+void *get_shared_mem(char *shm, int memsize)
+{
+  int fd;
+  void *mem;
+  fd = shm_open(shm, O_RDWR, S_IRUSR | S_IWUSR);
+  shm_unlink(shm);
+  if(fd < 0) {
+    perror("shm_open failed");
+    exit(1);
+  }
+  mem = mmap(NULL, memsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  if(mem == MAP_FAILED) {
+    printf("failed to mmap shared memory\n");
+    exit(1);
+  }
+  return mem;
+}
+
 int main(int argc, char *argv[])
 {
   char sem1[80], sem2[80], shm[80];
   sem_t *sem_rd, *sem_wr;
-  int width, height, memsize, fd, ret;
+  int width, height, memsize, ret;
+  int pagecount = 0, pagesize;
   void *mem;
   char *buffer, *picture;
   struct vd_struct *vd;
   struct timespec ts;
   DS_VideoDecoder *dshowdec;
-  struct option *LongOpts;
   int opt;
   char c;
   static struct option Long_Options[] = {
@@ -62,19 +81,21 @@ int main(int argc, char *argv[])
     {"fourcc", 1, 0, 'f'},
     {"guid", 1, 0, 'g'},
     {"id", 1, 0, 'i'},
+    {"numpages", 1, 0, 'n'},
     {"outfmt", 1, 0, 'o'},
     {"pid", 1, 0, 'p'},
     {"size", 1, 0, 's'},
     {0, 0, 0, 0},
   };
-  char *id, *codec;
+  char *id = NULL, *codec = NULL;
   GUID guid;
   BITMAPINFOHEADER bih;
-  uint32_t fourcc, fmt;
-  int bits, ppid;
+  uint32_t fourcc = 0, fmt = 0;
+  int bits = 0, ppid = 0;
+  void *base = NULL;
 
   while(1) {
-    c = getopt_long(argc, argv, "b:c:df:g:i:o:p:s:", Long_Options, &opt);
+    c = getopt_long(argc, argv, "b:c:df:g:i:n:o:p:s:", Long_Options, &opt);
     if (c == EOF)
       break;
     switch (c) {
@@ -91,7 +112,7 @@ int main(int argc, char *argv[])
         sscanf(optarg,"%dx%d", &width, &height);
         break;
       case 'g':
-        sscanf(optarg,"%8x-%4x-%4x-%2x%2x%2x%2x%2x%2x%2x%2x",
+        sscanf(optarg,"%8x-%4hx-%4hx-%2hhx%2hhx%2hhx%2hhx%2hhx%2hhx%2hhx%2hhx",
                &guid.f1, &guid.f2, &guid.f3,
                &guid.f4[0], &guid.f4[1], &guid.f4[2], &guid.f4[3],
                &guid.f4[4], &guid.f4[5], &guid.f4[6], &guid.f4[7]);
@@ -105,6 +126,9 @@ int main(int argc, char *argv[])
       case 'b':
         bits = strtol(optarg, NULL, 0);
         break;
+      case 'n':
+        pagecount = strtol(optarg, NULL, 0);
+	break;
       case 'p':
         ppid = strtol(optarg, NULL, 0);
     }
@@ -117,7 +141,16 @@ int main(int argc, char *argv[])
     printf("Must specify size\n");
     exit(1);
   }
-
+  pagesize = (width * height * bits / 8 + SAFETY_SIZE);
+  memsize = sizeof(struct vd_struct) + width * height + 
+            width * height * bits / 8 + pagesize * pagecount;
+  if(pagecount != 0) {
+    //when using shared pages, must allocate before starting the codec
+    mem = get_shared_mem(shm, memsize);
+    base = ((char *)mem) + sizeof(struct vd_struct) + width * height
+           + width * height * bits / 8;
+    set_memstruct(base, pagecount, pagesize);
+  }
   make_bih(&bih, width, height, fourcc);
   printf("Opening device\n");
   dshowdec = DS_VideoDecoder_Open(codec, &guid, &bih, 0, 0);
@@ -132,18 +165,9 @@ int main(int argc, char *argv[])
 
   printf("Initialization is complete\n");
   //Codec is now initialized
-  fd = shm_open(shm, O_RDWR, S_IRUSR | S_IWUSR);
-  shm_unlink(shm);
-  if(fd < 0) {
-    perror("shm_open failed");
-    exit(1);
-  }
-  memsize = sizeof(struct vd_struct) + width * height + 
-                                       width * height * bits / 8;
-  mem = mmap(NULL, memsize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  if(mem == MAP_FAILED) {
-    printf("failed to mmap shared memory\n");
-    exit(1);
+  if(pagecount == 0) {
+    mem = get_shared_mem(shm, memsize);
+    set_memstruct(NULL, 0, 0);
   }
   vd = (struct vd_struct *)mem;
   buffer = ((char *)mem) + sizeof(struct vd_struct);
@@ -177,7 +201,7 @@ int main(int argc, char *argv[])
         perror("sem_timedwait");
         exit(1);
       } else if(kill(ppid, 0)) {
-        fprintf(stderr, "Parent process %d died unexpectedly\n");
+        fprintf(stderr, "Parent process %d died unexpectedly\n", ppid);
         exit(1);
       }
     }

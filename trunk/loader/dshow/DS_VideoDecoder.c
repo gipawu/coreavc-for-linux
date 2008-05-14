@@ -433,12 +433,19 @@ int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int s
     }
     if(sampleProcData.updated)
     {
-      ret = 1;
-      framecount++;
+#ifdef USE_SHARED_MEM
+      int page;
+      page = get_memstruct_pagenum(sampleProcData.frame_pointer);
+      if (page != -1)
+          ret |= (0x02 | (page << 8));
+      else
+#endif
       if (pImage)
       {
         memcpy(pImage, sampleProcData.frame_pointer, sampleProcData.frame_size);
       }
+      ret |= 0x01;
+      framecount++;
       if(sampleProcData.interlace)
 	      ret |= 0x10;
     }

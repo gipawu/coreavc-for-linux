@@ -17,6 +17,94 @@
  */
 static const int SAFETY_ACEL = 1024;
 
+#ifdef USE_SHARED_MEM
+#include <pthread.h>
+static pthread_mutex_t mem_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct {
+    unsigned int pagecount;
+    unsigned int pagesize;
+    void *base;
+    void *end;
+    void *used[32];
+} memstruct;
+
+void set_memstruct(void *base, int count, int size)
+{
+    memstruct.base = base;
+    memstruct.end = (char *)base + size * count;
+    memstruct.pagesize = size;
+    memstruct.pagecount = count;
+    memset(memstruct.used, 0, sizeof(memstruct.used));
+}
+
+int get_memstruct_pagenum(void * __ptr)
+{
+    int i;
+    if(__ptr < memstruct.base || 
+       __ptr > memstruct.end)
+	return -1;
+    pthread_mutex_lock(&mem_mutex);
+    for(i=0; i < memstruct.pagecount; i++)
+      if(__ptr < memstruct.used[i])
+        break;
+    pthread_mutex_unlock(&mem_mutex);
+    return i;
+}
+static void *MALLOC (size_t __size)
+{
+    int i;
+    void *__ptr;
+    pthread_mutex_lock(&mem_mutex);
+    for(i=0; i < memstruct.pagecount; i++)
+	if(memstruct.used[i] == NULL)
+	    break;
+    if(i >= memstruct.pagecount || __size > memstruct.pagesize) {
+	__ptr = malloc(__size);
+    } else {
+	__ptr = memstruct.base+memstruct.pagesize*i;
+	memstruct.used[i] = __ptr + memstruct.pagesize;
+    }
+    pthread_mutex_unlock(&mem_mutex);
+    return __ptr;
+}
+static void *REALLOC (void *__ptr, size_t __size)
+{
+    int i;
+    if(__ptr < memstruct.base || 
+       __ptr > memstruct.end)
+	return realloc(__ptr, __size);
+    pthread_mutex_lock(&mem_mutex);
+    for(i=0; i < memstruct.pagecount; i++)
+	if(__ptr < memstruct.used[i])
+	    break;
+    if(__size > memstruct.pagesize) {
+	memstruct.used[i] = NULL;
+	__ptr = malloc(__size);
+    }
+    pthread_mutex_unlock(&mem_mutex);
+    return __ptr;
+}
+static void FREE(void *__ptr)
+{
+    int i;
+    if(__ptr < memstruct.base || 
+       __ptr > memstruct.end) {
+	free(__ptr);
+	return;
+    }
+    pthread_mutex_lock(&mem_mutex);
+    for(i=0; i < memstruct.pagecount; i++)
+	if(__ptr < memstruct.used[i])
+	    break;
+    memstruct.used[i] = NULL;
+    pthread_mutex_unlock(&mem_mutex);
+}
+#else
+#define MALLOC malloc
+#define REALLOC realloc
+#define FREE free
+#endif
+
 /**
  * \brief IPin::QueryInternalConnections (retries pin's internal connections)
  *
@@ -80,7 +168,7 @@ void CMediaSample_Destroy(CMediaSample* This)
 
     Debug printf("CMediaSample_Destroy(%p) called (ref:%d)\n", This, This->refcount);
     free(This->vt);
-    free(This->own_block);
+    FREE(This->own_block);
     if(((CMediaSample*)This)->type_valid)
 	FreeMediaType(&(This->media_type));
     free(This);
@@ -313,7 +401,7 @@ static HRESULT STDCALL CMediaSample_SetActualDataLength(IMediaSample* This,
         char* c = cms->own_block;
 	Debug printf("CMediaSample - buffer overflow   %ld %d   %p %p\n",
 		     __MIDL_0010, ((CMediaSample*)This)->size, cms->own_block, cms->block);
-	cms->own_block = (char*) realloc(cms->own_block, (size_t) __MIDL_0010 + SAFETY_ACEL);
+	cms->own_block = (char*) REALLOC(cms->own_block, (size_t) __MIDL_0010 + SAFETY_ACEL);
 	if (c == cms->block)
 	    cms->block = cms->own_block;
         cms->size = __MIDL_0010;
@@ -525,7 +613,7 @@ CMediaSample* CMediaSampleCreate(IMemAllocator* allocator, int size)
     //    size = (size + 0xfff) & ~0xfff;
 
     This->vt = (IMediaSample_vt*) malloc(sizeof(IMediaSample_vt));
-    This->own_block = (char*) malloc((size_t)size + SAFETY_ACEL);
+    This->own_block = (char*) MALLOC((size_t)size + SAFETY_ACEL);
     This->media_type.pbFormat = 0;
     This->media_type.pUnk = 0;
 
