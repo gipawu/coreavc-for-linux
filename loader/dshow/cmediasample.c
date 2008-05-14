@@ -209,7 +209,7 @@ static HRESULT STDCALL CMediaSample_SetTime(IMediaSample * This,
  */
 static HRESULT STDCALL CMediaSample_IsSyncPoint(IMediaSample * This)
 {
-    Debug printf("CMediaSample_IsSyncPoint(%p) called\n", This);
+    Debug printf("CMediaSample_IsSyncPoint(%p) called ==> %d\n", This, ((CMediaSample*)This)->isSyncPoint);
     if (((CMediaSample*)This)->isSyncPoint)
 	return 0;
     return 1;
@@ -248,7 +248,7 @@ static HRESULT STDCALL CMediaSample_SetSyncPoint(IMediaSample * This,
  */
 static HRESULT STDCALL CMediaSample_IsPreroll(IMediaSample * This)
 {
-    Debug printf("CMediaSample_IsPreroll(%p) called\n", This);
+    Debug printf("CMediaSample_IsPreroll(%p) called ==> %d\n", This, ((CMediaSample*)This)->isPreroll);
 
     if (((CMediaSample*)This)->isPreroll)
 	return 0;//S_OK
@@ -273,7 +273,7 @@ static HRESULT STDCALL CMediaSample_IsPreroll(IMediaSample * This)
 static HRESULT STDCALL CMediaSample_SetPreroll(IMediaSample * This,
 					       long bIsPreroll)
 {
-    Debug printf("CMediaSample_SetPreroll(%p) called\n", This);
+    Debug printf("CMediaSample_SetPreroll(%p, %d) called\n", This, bIsPreroll);
     ((CMediaSample*)This)->isPreroll=bIsPreroll;
     return 0;
 }
