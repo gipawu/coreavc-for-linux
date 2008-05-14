@@ -21,7 +21,7 @@
  *
  */
 #include "mp_msg.h"
-//Why is this here?
+//This is here for vo_format_name
 //#include "libmpcodecs/img_format.h"
 #include "wine/winerror.h"
 #include "com.h"
@@ -87,7 +87,7 @@ void DisplayMediaType(const char * label,const AM_MEDIA_TYPE* pmt){
     Debug mp_msg(MSGT_LOADER,MSGL_DBG4,"Vhdr: biSizeImage %ld\n",Vhdr->bmiHeader.biSizeImage);
     Debug mp_msg(MSGT_LOADER,MSGL_DBG4,"Vhdr: biBitCount %d\n",Vhdr->bmiHeader.biBitCount);
     if(Vhdr->bmiHeader.biCompression){
-        Debug mp_msg(MSGT_LOADER,MSGL_DBG4,"Vhdr: biComression 0x%08lx (%s)\n",Vhdr->bmiHeader.biCompression,vo_format_name(Vhdr->bmiHeader.biCompression));
+        Debug mp_msg(MSGT_LOADER,MSGL_DBG4,"Vhdr: biComression 0x%08lx (%s)\n",Vhdr->bmiHeader.biCompression,"" /*vo_format_name(Vhdr->bmiHeader.biCompression)*/);
     }else
         Debug mp_msg(MSGT_LOADER,MSGL_DBG4,"Vhdr: biComression 0x00000000\n");
 

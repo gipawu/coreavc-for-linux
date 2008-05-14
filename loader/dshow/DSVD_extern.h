@@ -34,6 +34,11 @@ typedef struct __attribute__((__packed__))
 } BITMAPINFOHEADER;
 #endif
 
+//SAFERTY_SIZE == SAFETY_ACEL from cmediasample.c
+#ifndef SAFETY_SIZE
+  #define SAFETY_SIZE 1024
+#endif
+
 typedef struct _DS_VideoDecoder DS_VideoDecoder;
 
 DS_VideoDecoder *DS_VideoDecoder_Open(const char* dllname, GUID* guid, BITMAPINFOHEADER* format, int flip, int maxauto);
@@ -65,3 +70,7 @@ __attribute__((__stdcall__)) long RegCreateKeyExA(long key, const char* name, lo
                      void* sec_attr, int* newkey, int* status);
 __attribute__((__stdcall__)) long RegSetValueExA(long key, const char* name, long v1, long v2,
                     const void* data, long size);
+
+// From cmediasample.c
+void set_memstruct(void *base, int count, int size);
+
