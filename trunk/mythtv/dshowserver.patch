@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp	(revision 17282)
-+++ libs/libmythtv/avformatdecoder.cpp	(working copy)
+--- libs/libmythtv/avformatdecoder.cpp.orig	2008-05-14 21:35:06.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2008-05-14 21:40:27.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -27,7 +27,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  // from libavcodec
  extern const uint8_t *ff_find_start_code(const uint8_t * restrict p, const uint8_t *end, uint32_t * restrict state);
  }
-@@ -130,21 +135,46 @@
+@@ -130,21 +135,56 @@
  
  typedef MythDeque<AVFrame*> avframe_q;
  
@@ -37,7 +37,17 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +    uint32_t cmd;
 +  };
 +  uint32_t buflen;
++  uint64_t pts;
++  uint32_t unused[8];
 +} __attribute__((__packed__));
++
++enum {
++  VD_END = 1,
++  VD_DECODE = 2,
++  VD_SEEK = 3,
++  VD_HAS_BIH = 0x10000,
++  VD_VERSION_MASK = 0xFFFF,
++};
 +
 +#include <semaphore.h>
 +#include <sys/mman.h>
@@ -77,7 +87,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
      void DestroyMPEG2();
      void ResetMPEG2();
      int DecodeMPEG2Video(AVCodecContext *avctx, AVFrame *picture,
-@@ -154,13 +184,248 @@
+@@ -154,13 +194,249 @@
      bool SetVideoSize(const QSize &video_dim);
      DVDV *GetDVDVDecoder(void) { return dvdvdec; }
  
@@ -208,6 +218,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +              allow_dshow = false;
 +              return false;
 +            }
++            memset((char *)ds_mpi->mem, 0, sizeof(struct vd_struct));
 +
 +            if (extra)
 +                memset((char *)ds_mpi->mem + (memsize - extra), 0, extra);
@@ -239,7 +250,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +    if (ds_mpi)
 +    {
 +        VERBOSE(VB_PLAYBACK, LOC + "Destroying filter");
-+        ds_mpi->vd->cmd = 1; //'1' is cmd for terminating
++        ds_mpi->vd->cmd = VD_END; //'1' is cmd for terminating
 +        sem_post(ds_mpi->sem_wr);
 +        close(ds_mpi->fd);
 +        sem_close(ds_mpi->sem_wr);
@@ -284,7 +295,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +                                             uint8_t *buf, int buf_size)
 +{
 +    int ret;
-+    ds_mpi->vd->cmd = 2; //'1' is cmd for decoding
++    ds_mpi->vd->cmd = VD_DECODE; //'1' is cmd for decoding
 +    memcpy(ds_mpi->data, buf, buf_size);
 +    ds_mpi->vd->buflen = buf_size;
 +    sem_post(ds_mpi->sem_wr);
@@ -326,7 +337,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  /**
   * \brief Initialise either libmpeg2, or DVDV (Mac HW accel), to do decoding
   *
-@@ -382,7 +647,7 @@
+@@ -382,7 +658,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -335,7 +346,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
        frame_decoded(0),             decoded_video_frame(NULL),
-@@ -1527,6 +1792,9 @@
+@@ -1527,6 +1803,9 @@
                          }
                      }
  
@@ -345,7 +356,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      MythCodecID mcid;
                      mcid = VideoOutputXv::GetBestSupportedCodec(
                          /* disp dim     */ width, height,
-@@ -1536,6 +1804,7 @@
+@@ -1536,6 +1815,7 @@
                          /* test surface */ kCodec_NORMAL_END > video_codec_id,
                          /* force_xv     */ force_xv);
                      bool vcd, idct, mc;
@@ -353,7 +364,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      enc->codec_id = (CodecID)
                          myth2av_codecid(mcid, vcd, idct, mc);
  
-@@ -1591,6 +1860,7 @@
+@@ -1591,6 +1871,7 @@
                  }
  
                  // Initialize alternate decoders when needed...
@@ -361,7 +372,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (((dec == "libmpeg2") &&
                       (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                        CODEC_ID_MPEG2VIDEO == enc->codec_id)) ||
-@@ -3584,7 +3854,21 @@
+@@ -3584,7 +3865,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -386,8 +397,8 @@ Index: libs/libmythtv/avformatdecoder.cpp
                          {
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro	(revision 17282)
-+++ libs/libmythtv/libmythtv.pro	(working copy)
+--- libs/libmythtv/libmythtv.pro.orig	2008-05-14 21:35:06.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2008-05-14 21:35:36.000000000 -0700
 @@ -37,6 +37,7 @@
  LIBS += -lmythmpeg2-$$LIBVERSION    -lmythdvdnav-$$LIBVERSION
  LIBS += -lmythfreemheg-$$LIBVERSION -lmythlivemedia-$$LIBVERSION

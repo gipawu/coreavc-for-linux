@@ -48,8 +48,12 @@ void DS_VideoDecoder_Destroy(DS_VideoDecoder *dsvd);
 void DS_VideoDecoder_StartInternal(DS_VideoDecoder *dsvd);
 
 void DS_VideoDecoder_StopInternal(DS_VideoDecoder *dsvd);
+void DS_VideoDecoder_SeekInternal(DS_VideoDecoder *dsvd);
 
 int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *dsvd, const void* src, int size, int is_keyframe, char* pImage);
+
+void DS_VideoDecoder_SetPTS(DS_VideoDecoder *dsvd, uint64_t pts_nsec);
+uint64_t DS_VideoDecoder_GetPTS(DS_VideoDecoder *dsvd);
 
 /*
  * bits == 0   - leave unchanged

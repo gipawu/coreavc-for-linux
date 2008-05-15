@@ -13,6 +13,7 @@ typedef struct {
     long frame_size;
     int  updated;
     unsigned long interlace;
+    uint64_t pts_nsec;
 } SampleProcUserData;
 
 /**
