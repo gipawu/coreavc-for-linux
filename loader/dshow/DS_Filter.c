@@ -99,6 +99,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     BYTE* pointer;
     int len;
     AM_MEDIA_TYPE *mt;
+    REFERENCE_TIME stoptime;
  
     SampleProcUserData* pData=pUserData;
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
@@ -115,6 +116,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     if (len == 0)
 	len = pSample->vt->GetSize(pSample);//for iv50
 
+    pSample->vt->GetTime(pSample, &pData->pts_nsec, &stoptime);
     pData->frame_pointer = pointer;
     pData->frame_size = len;
     pData->updated = 1;

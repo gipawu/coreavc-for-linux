@@ -255,8 +255,14 @@ static HRESULT STDCALL CMediaSample_GetTime(IMediaSample * This,
 					    /* [out] */ REFERENCE_TIME *pTimeStart,
 					    /* [out] */ REFERENCE_TIME *pTimeEnd)
 {
-    Debug printf("CMediaSample_GetTime(%p) called (UNIMPLEMENTED)\n", This);
-    return E_NOTIMPL;
+    //return E_NOTIMPL;
+    if (pTimeStart)
+      *pTimeStart = ((CMediaSample*) This)->time_start;
+    if (pTimeEnd)
+       *pTimeEnd = ((CMediaSample*) This)->time_end;
+    Debug printf("CMediaSample_GetTime(%p) called => (%lld, %lld)\n", This,
+                 (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
+    return 0;
 }
 
 /**
@@ -279,8 +285,14 @@ static HRESULT STDCALL CMediaSample_SetTime(IMediaSample * This,
 					    /* [in] */ REFERENCE_TIME *pTimeStart,
 					    /* [in] */ REFERENCE_TIME *pTimeEnd)
 {
-    Debug printf("CMediaSample_SetTime(%p) called (UNIMPLEMENTED)\n", This);
-    return E_NOTIMPL;
+    Debug printf("CMediaSample_SetTime(%p, %lld, %lld) called\n", This,
+                 (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
+    //return E_NOTIMPL;
+    if (pTimeStart)
+      ((CMediaSample*) This)->time_start = *pTimeStart;
+    if (pTimeEnd)
+      ((CMediaSample*) This)->time_end = *pTimeEnd;
+    return 0;
 }
 
 /**
@@ -525,16 +537,17 @@ static HRESULT STDCALL CMediaSample_GetMediaTime(IMediaSample * This,
 						 /* [out] */ LONGLONG *pTimeStart,
 						 /* [out] */ LONGLONG *pTimeEnd)
 {
-    Debug printf("CMediaSample_GetMediaTime(%p) called\n", This);
     if (pTimeStart)
 	*pTimeStart = ((CMediaSample*) This)->time_start;
     if (pTimeEnd)
 	*pTimeEnd = ((CMediaSample*) This)->time_end;
+    Debug printf("CMediaSample_GetMediaTime(%p) called => (%lld, %lld)\n", This,
+                 (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
     return 0;
 }
 
 /**
- * \brief IMediaSample::GetMediaTime (retrieves the media times of this sample)
+ * \brief IMediaSample::SetMediaTime (retrieves the media times of this sample)
  *
  * \param[in] This pointer to CMediaSample object
  * \param[out] pTimeStart pointer to variable that specifies start time
@@ -545,13 +558,14 @@ static HRESULT STDCALL CMediaSample_GetMediaTime(IMediaSample * This,
  *
  * \remarks
  * To invalidate the media times set pTimeStart and pTimeEnd to NULL. this will cause
- * IMEdiaSample::GetTime to return VFW_E_MEDIA_TIME_NOT_SET
+ * IMediaSample::GetMediaTime to return VFW_E_MEDIA_TIME_NOT_SET
  */
 static HRESULT STDCALL CMediaSample_SetMediaTime(IMediaSample * This,
 						 /* [in] */ LONGLONG *pTimeStart,
 						 /* [in] */ LONGLONG *pTimeEnd)
 {
-    Debug printf("CMediaSample_SetMediaTime(%p) called\n", This);
+    Debug printf("CMediaSample_SetMediaTime(%p, %lld, %lld) called\n", This,
+                 (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
     if (pTimeStart)
 	((CMediaSample*) This)->time_start = *pTimeStart;
     if (pTimeEnd)

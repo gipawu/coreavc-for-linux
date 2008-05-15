@@ -383,6 +383,30 @@ void DS_VideoDecoder_StopInternal(DS_VideoDecoder *this)
     //??? why was this here ??? m_pOurOutput->SetFramePointer(0);
 }
 
+void DS_VideoDecoder_SeekInternal(DS_VideoDecoder *this)
+{
+    HRESULT ret;
+    Debug printf("DS_VideoDecoder_SeekInternal\n");
+    ret = this->m_pDS_Filter->m_pInputPin->vt->NewSegment(this->m_pDS_Filter->m_pInputPin,0,0,1);
+    printf("NewSegment returned: %08x\n", ret);
+}
+
+void DS_VideoDecoder_SetPTS(DS_VideoDecoder *this, uint64_t pts_nsec)
+{
+    IMediaSample* sample = 0;
+    REFERENCE_TIME stoptime;
+    stoptime = pts_nsec + 1;
+    this->m_pDS_Filter->m_pAll->vt->GetBuffer(this->m_pDS_Filter->m_pAll, &sample, 0, 0, 0);
+    if(sample)
+      sample->vt->SetTime(sample, &pts_nsec, &stoptime);
+    sample->vt->Release((IUnknown*)sample);
+}
+
+uint64_t DS_VideoDecoder_GetPTS(DS_VideoDecoder *this)
+{
+    return sampleProcData.pts_nsec;
+}
+
 int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int size, int is_keyframe, char* pImage)
 {
     IMediaSample* sample = 0;

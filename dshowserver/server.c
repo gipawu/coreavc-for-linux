@@ -21,10 +21,15 @@ struct vd_struct {
     uint32_t cmd;
   };
   uint32_t buflen;
+  uint64_t pts;
+  uint32_t unused[8];
 };
 enum {
   VD_END = 1,
   VD_DECODE = 2,
+  VD_SEEK = 3,
+  VD_HAS_BIH = 0x10000,
+  VD_VERSION_MASK = 0xFFFF,
 };
 
 unsigned int print_verbose_messages = 0;
@@ -68,8 +73,9 @@ int main(int argc, char *argv[])
   int width, height, memsize, ret;
   int pagecount = 0, pagesize;
   void *mem;
-  char *buffer, *picture;
-  struct vd_struct *vd;
+  char *buffer = NULL;
+  char *picture = NULL;
+  struct vd_struct *vd = NULL;
   struct timespec ts;
   DS_VideoDecoder *dshowdec;
   int opt;
@@ -89,7 +95,7 @@ int main(int argc, char *argv[])
   };
   char *id = NULL, *codec = NULL;
   GUID guid;
-  BITMAPINFOHEADER bih;
+  BITMAPINFOHEADER bih, *bih_ptr = &bih;
   uint32_t fourcc = 0, fmt = 0;
   int bits = 0, ppid = 0;
   void *base = NULL;
@@ -133,27 +139,41 @@ int main(int argc, char *argv[])
         ppid = strtol(optarg, NULL, 0);
     }
   }
-  snprintf(shm, 80, "/dshow_shm.%s", id);
-  snprintf(sem1, 80, "/dshow_sem1.%s", id);
-  snprintf(sem2, 80, "/dshow_sem2.%s", id);
-  printf("shm:%s\nsem1:%s\nsem2:%s\n", shm, sem1, sem2);
   if(width*height == 0) {
     printf("Must specify size\n");
     exit(1);
   }
-  pagesize = (width * height * bits / 8 + SAFETY_SIZE);
-  memsize = sizeof(struct vd_struct) + width * height + 
-            width * height * bits / 8 + pagesize * pagecount;
-  if(pagecount != 0) {
+  if(!id) {
+    printf("No id specified, assuming test mode\n");
+    make_bih(&bih, width, height, fourcc);
+  } else {
+    snprintf(shm, 80, "/dshow_shm.%s", id);
+    snprintf(sem1, 80, "/dshow_sem1.%s", id);
+    snprintf(sem2, 80, "/dshow_sem2.%s", id);
+    printf("shm:%s\nsem1:%s\nsem2:%s\n", shm, sem1, sem2);
+
+    pagesize = (width * height * bits / 8 + SAFETY_SIZE);
+    memsize = sizeof(struct vd_struct) + width * height + 
+              width * height * bits / 8 + pagesize * pagecount;
     //when using shared pages, must allocate before starting the codec
     mem = get_shared_mem(shm, memsize);
-    base = ((char *)mem) + sizeof(struct vd_struct) + width * height
-           + width * height * bits / 8;
-    set_memstruct(base, pagecount, pagesize);
+    if(pagecount != 0) {
+      base = ((char *)mem) + sizeof(struct vd_struct) + width * height
+             + width * height * bits / 8;
+      set_memstruct(base, pagecount, pagesize);
+    } else {
+      set_memstruct(NULL, 0, 0);
+    }
+    vd = (struct vd_struct *)mem;
+    buffer = ((char *)mem) + sizeof(struct vd_struct);
+    picture = ((char *)mem) + sizeof(struct vd_struct) + width * height;
+    if(vd->cmd & VD_HAS_BIH)
+      bih_ptr = (BITMAPINFOHEADER *)buffer;
+    else
+      make_bih(&bih, width, height, fourcc);
   }
-  make_bih(&bih, width, height, fourcc);
   printf("Opening device\n");
-  dshowdec = DS_VideoDecoder_Open(codec, &guid, &bih, 0, 0);
+  dshowdec = DS_VideoDecoder_Open(codec, &guid, bih_ptr, 0, 0);
   if(! dshowdec) {
     fprintf(stderr, "Failed to open win32 codec %s\n", codec);
     exit(1);
@@ -165,13 +185,8 @@ int main(int argc, char *argv[])
 
   printf("Initialization is complete\n");
   //Codec is now initialized
-  if(pagecount == 0) {
-    mem = get_shared_mem(shm, memsize);
-    set_memstruct(NULL, 0, 0);
-  }
-  vd = (struct vd_struct *)mem;
-  buffer = ((char *)mem) + sizeof(struct vd_struct);
-  picture = ((char *)mem) + sizeof(struct vd_struct) + width * height;
+  if(! id)
+    exit(0);
   sem_rd = sem_open(sem1, 0);
   sem_unlink(sem1);
   if(sem_rd == SEM_FAILED) {
@@ -211,9 +226,16 @@ int main(int argc, char *argv[])
         DS_VideoDecoder_Destroy(dshowdec);
         exit(0);
       case VD_DECODE:
+        DS_VideoDecoder_SetPTS(dshowdec, vd->pts);
         vd->ret = DS_VideoDecoder_DecodeInternal(dshowdec, buffer, vd->buflen, 0, picture);
+        vd->pts = DS_VideoDecoder_GetPTS(dshowdec);
         ret = vd->ret;
         break;
+      case VD_SEEK:
+        DS_VideoDecoder_SeekInternal(dshowdec);
+	ret = 0;
+	vd->ret = 0;
+	break;
       default:
         fprintf(stderr, "Got illegal command %d\n", vd->cmd);
         ret = -1;
