@@ -28,6 +28,7 @@ enum {
   VD_END = 1,
   VD_DECODE = 2,
   VD_SEEK = 3,
+  VD_RELOAD_BIH = 4,
   VD_HAS_BIH = 0x10000,
   VD_VERSION_MASK = 0xFFFF,
 };
@@ -134,7 +135,7 @@ int main(int argc, char *argv[])
         break;
       case 'n':
         pagecount = strtol(optarg, NULL, 0);
-	break;
+        break;
       case 'p':
         ppid = strtol(optarg, NULL, 0);
     }
@@ -233,9 +234,24 @@ int main(int argc, char *argv[])
         break;
       case VD_SEEK:
         DS_VideoDecoder_SeekInternal(dshowdec);
-	ret = 0;
-	vd->ret = 0;
-	break;
+        ret = 0;
+        vd->ret = 0;
+        break;
+      case VD_RELOAD_BIH:
+        bih_ptr = (BITMAPINFOHEADER *)buffer;
+        if(bih_ptr->biWidth != width || bih_ptr->biHeight != height) {
+          printf("Cannot reload BITMAPINFOHEADER because new size (%dx%d) != old size (%dx%d)\n",
+                 bih_ptr->biWidth, bih_ptr->biHeight, width, height);
+          vd->ret = -1;
+        } else {
+	  printf("Starting reload\n");
+          DS_VideoDecoder_SetInputType(dshowdec, (BITMAPINFOHEADER *)buffer);
+	  printf("Starting reload 2\n");
+          DS_VideoDecoder_SetDestFmt(dshowdec,bits,fmt);
+	  printf("Starting reload 3\n");
+          vd->ret = 0;
+        }
+        break;
       default:
         fprintf(stderr, "Got illegal command %d\n", vd->cmd);
         ret = -1;
