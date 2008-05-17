@@ -20,23 +20,7 @@ svn checkout http://coreavc-for-linux.googlecode.com/svn/trunk/ coreavc-for-linu
 cd coreavc-for-linux
 }}}
 
-2) Install dshowserver
-  * Choose one of the following options:
-    # Build from source (ia32 only)
-{{{
-make -C dshowserver
-}}}
-    # Download static binaries (for x86_64)
-      download the latest binary from [http://code.google.com/p/coreavc-for-linux/downloads/list here], then:
-{{{
-tar -xjf <path to dshowserver-ia32-rxxx.tar.bz2
-}}}
-  * Once you have the necessary binaries, do:
-{{{
-cp dshowserver /usr/local/bin
-cp ../loader/registercodec /usr/local/bin 
-}}}
-
+2) Install dshowserver forrlowing these instructions: [DshowserverInstall]
 
 3) Install patch into mplayer:
 {{{
@@ -68,14 +52,6 @@ videocodec coreserve
   dll "CoreAVCDecoder.ax"
   guid 0x09571a4b, 0xf1fe, 0x4c60, 0x97, 0x60, 0xde, 0x6d, 0x31, 0x0c, 0x7c, 0x31
   out YV12,IYUV,I420,YUY2
-}}}
-
-5) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
-
-6) Install CoreAVC license info as documented in [RegisterCoreAVC]
-  * NOTE: registercodec doesn't build with current mplayer SVN due to changes in the build process.  To build it, do this"
-  {{{
-cd loader && gcc -I. -I.. -o registercodec modify_reg.c
 }}}
 
 = Playing tips =
