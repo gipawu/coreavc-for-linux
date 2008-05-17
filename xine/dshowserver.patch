@@ -1,6 +1,6 @@
 diff -r 66e1654718fb po/es.po
 --- a/po/es.po	Mon Apr 14 22:38:03 2008 +0200
-+++ b/po/es.po	Sat May 17 06:05:07 2008 -0700
++++ b/po/es.po	Sat May 17 06:56:31 2008 -0700
 @@ -10,7 +10,7 @@ msgstr ""
  msgstr ""
  "Project-Id-Version: xine-lib.hg\n"
@@ -61,7 +61,7 @@ diff -r 66e1654718fb po/es.po
  msgstr ""
 diff -r 66e1654718fb src/libxinevdec/Makefile.am
 --- a/src/libxinevdec/Makefile.am	Mon Apr 14 22:38:03 2008 +0200
-+++ b/src/libxinevdec/Makefile.am	Sat May 17 06:05:07 2008 -0700
++++ b/src/libxinevdec/Makefile.am	Sat May 17 06:56:31 2008 -0700
 @@ -22,7 +22,8 @@ xineplug_LTLIBRARIES = $(image_module) \
  	$(theora_module) \
  	xineplug_decode_bitplane.la \
@@ -81,8 +81,8 @@ diff -r 66e1654718fb src/libxinevdec/Makefile.am
 +xineplug_decode_dshowserver_la_LIBADD = $(XINE_LIB) -lrt -lpthread
 diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/dshowserver.c	Sat May 17 06:05:07 2008 -0700
-@@ -0,0 +1,395 @@
++++ b/src/libxinevdec/dshowserver.c	Sat May 17 06:56:32 2008 -0700
+@@ -0,0 +1,401 @@
 +/*
 + * Copyright (C) 2008 Alan Nisota
 + *
@@ -388,10 +388,16 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +    lprintf("ret: %d/%d PTS: %lld -> %lld\n", ret, this->ds_mpi.vd->ret, buf->pts, this->ds_mpi.vd->pts);
 +    //printf("PTS (%d): %f(%d) -> %d\n", this->ds_mpi.vd->ret, sh->buffered_pts[0], pts-1, this->ds_mpi.vd->pts);
 +    if(ret == 0 && this->ds_mpi.vd->ret && ! (this->ds_mpi.vd->ret & (1<<31))) {
++      int flags = VO_BOTH_FIELDS;
++      if(this->ds_mpi.vd->ret & 0x10)
++	flags |= VO_INTERLACED_FLAG;
++      else
++	flags &= ~VO_INTERLACED_FLAG;
++
 +      img = this->stream->video_out->get_frame (this->stream->video_out,
 +                                        this->width, this->height,
 +                                        this->ratio, XINE_IMGFMT_YUY2,
-+                                        VO_BOTH_FIELDS);
++                                        flags);
 +      if(this->ds_mpi.vd->pts)
 +        img->pts = this->ds_mpi.vd->pts;
 +      else
@@ -480,7 +486,7 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +};
 diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.c	Sat May 17 06:05:07 2008 -0700
++++ b/src/libxinevdec/nal_parser.c	Sat May 17 06:56:32 2008 -0700
 @@ -0,0 +1,516 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -1000,7 +1006,7 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +}
 diff -r 66e1654718fb src/libxinevdec/nal_parser.h
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.h	Sat May 17 06:05:07 2008 -0700
++++ b/src/libxinevdec/nal_parser.h	Sat May 17 06:56:32 2008 -0700
 @@ -0,0 +1,141 @@
 +#ifndef NAL_PARSER_H_
 +#define NAL_PARSER_H_
