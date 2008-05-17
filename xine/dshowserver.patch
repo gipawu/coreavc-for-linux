@@ -1,67 +1,6 @@
-diff -r 66e1654718fb po/es.po
---- a/po/es.po	Mon Apr 14 22:38:03 2008 +0200
-+++ b/po/es.po	Sat May 17 06:56:31 2008 -0700
-@@ -10,7 +10,7 @@ msgstr ""
- msgstr ""
- "Project-Id-Version: xine-lib.hg\n"
- "Report-Msgid-Bugs-To: xine-devel@lists.sourceforge.net\n"
--"POT-Creation-Date: 2008-04-02 01:36+0100\n"
-+"POT-Creation-Date: 2008-03-19 13:16+0000\n"
- "PO-Revision-Date: 2008-04-02 01:05+0200\n"
- "Last-Translator: Carlos E. R. M. <carloser@users.sourceforge.net>\n"
- "Language-Team: Spanish <none>\n"
-@@ -812,18 +812,18 @@ msgstr ""
- "compatibles OSS"
- 
- # Cer: ¿pulseaudio?
--#: src/audio_out/audio_pulse_out.c:715
-+#: src/audio_out/audio_pulse_out.c:549
- msgid "device used for pulseaudio"
- msgstr "dispositivo usado para audio a pulsos"
- 
- # Cer: ¿pulseaudio? Estaba como "polypaudio" pero fuzzy.
--#: src/audio_out/audio_pulse_out.c:716
-+#: src/audio_out/audio_pulse_out.c:550
- msgid "use 'server[:sink]' for setting the pulseaudio sink device."
- msgstr ""
- "use 'server[:sink]' para definir el sumidero del dispositivo audio a pulsos."
- 
- # Cer: ¿pulseaudio?
--#: src/audio_out/audio_pulse_out.c:784
-+#: src/audio_out/audio_pulse_out.c:583
- msgid "xine audio output plugin using pulseaudio sound server"
- msgstr ""
- "complemento de xine de salida de audio usando servidor de sonido audio a "
-@@ -1059,7 +1059,7 @@ msgid "Restoring index..."
- msgid "Restoring index..."
- msgstr "Restaurando índice..."
- 
--#: src/demuxers/demux_avi.c:628 src/demuxers/demux_avi.c:1693
-+#: src/demuxers/demux_avi.c:628 src/demuxers/demux_avi.c:1683
- #, c-format
- msgid "demux_avi: invalid avi chunk \"%c%c%c%c\" at pos %<PRIdMAX>\n"
- msgstr "demux_avi: bloque avi inválido \"%c%c%c%c\" en posición %<PRIdMAX>\n"
-@@ -1080,7 +1080,7 @@ msgid "invalid FILM chunk size\n"
- msgid "invalid FILM chunk size\n"
- msgstr "tamaño de bloque FILM inválido\n"
- 
--#: src/demuxers/demux_film.c:344
-+#: src/demuxers/demux_film.c:340
- #, c-format
- msgid "unrecognized FILM chunk\n"
- msgstr "bloque FILM no reconocido\n"
-@@ -1226,7 +1226,7 @@ msgstr ""
- msgstr ""
- "demux_wc3movie: bloque SHOT referenció una paleta inválida (%d >= %d)\n"
- 
--#: src/demuxers/demux_wc3movie.c:410
-+#: src/demuxers/demux_wc3movie.c:404
- #, c-format
- msgid "demux_wc3movie: There was a problem while loading palette chunks\n"
- msgstr ""
 diff -r 66e1654718fb src/libxinevdec/Makefile.am
 --- a/src/libxinevdec/Makefile.am	Mon Apr 14 22:38:03 2008 +0200
-+++ b/src/libxinevdec/Makefile.am	Sat May 17 06:56:31 2008 -0700
++++ b/src/libxinevdec/Makefile.am	Sat May 17 09:08:43 2008 -0700
 @@ -22,7 +22,8 @@ xineplug_LTLIBRARIES = $(image_module) \
  	$(theora_module) \
  	xineplug_decode_bitplane.la \
@@ -81,8 +20,8 @@ diff -r 66e1654718fb src/libxinevdec/Makefile.am
 +xineplug_decode_dshowserver_la_LIBADD = $(XINE_LIB) -lrt -lpthread
 diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/dshowserver.c	Sat May 17 06:56:32 2008 -0700
-@@ -0,0 +1,401 @@
++++ b/src/libxinevdec/dshowserver.c	Sat May 17 09:08:43 2008 -0700
+@@ -0,0 +1,426 @@
 +/*
 + * Copyright (C) 2008 Alan Nisota
 + *
@@ -416,16 +355,41 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +  }
 +}
 +
++/* flush gets called by video-decoder to force outputting frames (?) */
 +static void dshowserver_flush (video_decoder_t *this_gen) {
 +}
 +
++/* reset seems to be called after a seek */
 +static void dshowserver_reset (video_decoder_t *this_gen) {
++  dshowserver_decoder_t *this = (dshowserver_decoder_t *) this_gen;
++  xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG, "dshowserver: called reset\n");
++  if(this->decoder_initialized) {
++    this->ds_mpi.vd->cmd = VD_SEEK; //'3' is cmd for seek
++    sem_post(this->ds_mpi.sem_wr);
++    sem_twait(this->ds_mpi.sem_rd, 10);
++  }
++  xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG, "dshowserver: reset done\n");
 +}
 +
 +static void dshowserver_discontinuity (video_decoder_t *this_gen) {
 +}
 +
 +static void dshowserver_dispose (video_decoder_t *this_gen) {
++  dshowserver_decoder_t *this = (dshowserver_decoder_t *) this_gen;
++  if( this->decoder_initialized )  {  
++    this->decoder_ok = 0;
++    this->stream->video_out->close(this->stream->video_out, this->stream);
++    this->ds_mpi.vd->cmd = VD_END; //'1' is cmd for terminating
++    sem_post(this->ds_mpi.sem_wr);
++    close(this->ds_mpi.fd);
++    sem_close(this->ds_mpi.sem_wr);
++    sem_close(this->ds_mpi.sem_rd);
++  }
++  if(this->parser)
++    free_parser(this->parser);
++  if(this->bih)
++    free(this->bih);
++  free (this);
 +}
 +
 +static video_decoder_t *open_plugin (video_decoder_class_t *class_gen, xine_stream_t *stream) {
@@ -446,11 +410,11 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +}
 +
 +static char *get_identifier (video_decoder_class_t *this) {
-+  return "bitplane";
++  return "dshowserver";
 +}
 +
 +static char *get_description (video_decoder_class_t *this) {
-+  return "Raw bitplane video decoder plugin";
++  return "Dshowserver video decoder plugin";
 +}
 +
 +static void dispose_class (video_decoder_class_t *this) {
@@ -486,7 +450,7 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +};
 diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.c	Sat May 17 06:56:32 2008 -0700
++++ b/src/libxinevdec/nal_parser.c	Sat May 17 09:08:43 2008 -0700
 @@ -0,0 +1,516 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -1006,7 +970,7 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +}
 diff -r 66e1654718fb src/libxinevdec/nal_parser.h
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.h	Sat May 17 06:56:32 2008 -0700
++++ b/src/libxinevdec/nal_parser.h	Sat May 17 09:08:43 2008 -0700
 @@ -0,0 +1,141 @@
 +#ifndef NAL_PARSER_H_
 +#define NAL_PARSER_H_
