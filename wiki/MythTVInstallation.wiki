@@ -29,7 +29,7 @@ tar -xjf <path to dshowserver-ia32-rxxx.tar.bz2
   * Once you have the necessary binaries, do:
 {{{
 cp dshowserver /usr/local/bin
-cp ../loader/registercdec /usr/local/bin 
+cp ../loader/registercodec /usr/local/bin 
 }}}
 
 3) Install the mythtv patch
