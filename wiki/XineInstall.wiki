@@ -14,22 +14,7 @@ svn checkout http://coreavc-for-linux.googlecode.com/svn/trunk/ coreavc-for-linu
 cd coreavc-for-linux
 }}}
 
-2) Install dshowserver
-  * Choose one of the following options:
-    # Build from source (ia32 only)
-{{{
-make -C dshowserver
-}}}
-    # Download static binaries (for x86_64)
-      download the latest binary from [http://code.google.com/p/coreavc-for-linux/downloads/list here], then:
-{{{
-tar -xjf <path to dshowserver-ia32-rxxx.tar.bz2
-}}}
-  * Once you have the necessary binaries, do:
-{{{
-cp dshowserver /usr/local/bin
-cp ../loader/registercodec /usr/local/bin 
-}}}
+2) Install dshowserver forrlowing these instructions: [DshowserverInstall]
 
 3) Install the xine patch
 {{{
@@ -37,25 +22,4 @@ cd <path to xine-lib src>
 patch -p1 < <path to coreavc-for-linux>/xine/dshowserver.patch
 make
 make install
-}}}
-
-4) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
-
-5) Install CoreAVC license info as documented in [RegisterCoreAVC]
-
-6) Verify that dshowserver is working
-{{{
-dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449
-}}}
-Should return:
-{{{
-No id specified, assuming test mode
-Opening device
-len: 992
-ProductVersion: 1.7.0
-Decoder supports the following YUV formats: YUY2 UYVY YV12 I420 
-Decoder is capable of YUV output (flags 0x2b)
-Setting fmt
-Starting
-Initialization is complete
 }}}
