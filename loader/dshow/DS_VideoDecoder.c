@@ -163,7 +163,43 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
     *size = sizeof(struct MPEG2VIDEOINFO) + mp2vi->cbSequenceHeader - 4;
     return (char *)mp2vi;
 }
+void DS_VideoDecoder_SetInputType(DS_VideoDecoder *this, BITMAPINFOHEADER * format)
+{
+  unsigned int bihs;
 
+  bihs = (format->biSize < (int) sizeof(BITMAPINFOHEADER)) ?
+         sizeof(BITMAPINFOHEADER) : format->biSize;
+  this->iv.m_bh = realloc(this->iv.m_bh, bihs);
+  memcpy(this->iv.m_bh, format, bihs);
+  this->iv.m_bh->biSize = bihs;
+  bihs += sizeof(VIDEOINFOHEADER) - sizeof(BITMAPINFOHEADER);
+  this->m_sVhdr = realloc(this->m_sVhdr, bihs);
+  memset(this->m_sVhdr, 0, bihs);
+  memcpy(&this->m_sVhdr->bmiHeader, this->iv.m_bh, this->iv.m_bh->biSize);
+  this->m_sVhdr->rcSource.left = this->m_sVhdr->rcSource.top = 0;
+  this->m_sVhdr->rcSource.right = this->m_sVhdr->bmiHeader.biWidth;
+  this->m_sVhdr->rcSource.bottom = this->m_sVhdr->bmiHeader.biHeight;
+  //this->m_sVhdr->rcSource.right = 0;
+  //this->m_sVhdr->rcSource.bottom = 0;
+  this->m_sVhdr->rcTarget = this->m_sVhdr->rcSource;
+
+  this->m_sOurType.majortype = MEDIATYPE_Video;
+  this->m_sOurType.subtype = MEDIATYPE_Video;
+  this->m_sOurType.subtype.f1 = this->m_sVhdr->bmiHeader.biCompression;
+  this->m_sOurType.formattype = FORMAT_VideoInfo;
+  this->m_sOurType.bFixedSizeSamples = false;
+  this->m_sOurType.bTemporalCompression = true;
+  this->m_sOurType.pUnk = 0;
+  this->m_sOurType.cbFormat = bihs;
+  this->m_sOurType.pbFormat = (char*)this->m_sVhdr;
+  if(is_avc(this->m_sVhdr->bmiHeader.biCompression)) {
+    int size, i;
+    this->m_sOurType.formattype = FORMAT_MPEG2Video;
+    this->m_sOurType.pbFormat =
+                    (char*)ConvertVIHtoMPEG2VI(this->m_sVhdr, &size);
+    this->m_sOurType.cbFormat = size;
+  }
+}
 DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEADER * format, int flip, int maxauto)
 {
     DS_VideoDecoder *this;
@@ -172,9 +208,6 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
                         
     this = malloc(sizeof(DS_VideoDecoder));
     memset( this, 0, sizeof(DS_VideoDecoder));
-    
-    this->m_sVhdr2 = 0;
-    this->m_iLastQuality = -1;
     this->m_iMaxAuto = maxauto;
 
 #ifdef WIN32_LOADER
@@ -185,15 +218,6 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
     //m_obh.biSize = sizeof(m_obh);
     /*try*/
     {
-        unsigned int bihs;
-        
-	bihs = (format->biSize < (int) sizeof(BITMAPINFOHEADER)) ?
-	    sizeof(BITMAPINFOHEADER) : format->biSize;
-     
-        this->iv.m_bh = malloc(bihs);
-        memcpy(this->iv.m_bh, format, bihs);
-        this->iv.m_bh->biSize = bihs;
-
         this->iv.m_State = STOP;
         //this->iv.m_pFrame = 0;
         this->iv.m_Mode = DIRECT;
@@ -201,35 +225,9 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
         this->iv.m_iPlaypos = -1;
         this->iv.m_fQuality = 0.0f;
         this->iv.m_bCapable16b = true;
-                
-        bihs += sizeof(VIDEOINFOHEADER) - sizeof(BITMAPINFOHEADER);
-	this->m_sVhdr = malloc(bihs);
-	memset(this->m_sVhdr, 0, bihs);
-	memcpy(&this->m_sVhdr->bmiHeader, this->iv.m_bh, this->iv.m_bh->biSize);
-	this->m_sVhdr->rcSource.left = this->m_sVhdr->rcSource.top = 0;
-	this->m_sVhdr->rcSource.right = this->m_sVhdr->bmiHeader.biWidth;
-	this->m_sVhdr->rcSource.bottom = this->m_sVhdr->bmiHeader.biHeight;
-	//this->m_sVhdr->rcSource.right = 0;
-	//this->m_sVhdr->rcSource.bottom = 0;
-	this->m_sVhdr->rcTarget = this->m_sVhdr->rcSource;
 
-	this->m_sOurType.majortype = MEDIATYPE_Video;
-	this->m_sOurType.subtype = MEDIATYPE_Video;
-        this->m_sOurType.subtype.f1 = this->m_sVhdr->bmiHeader.biCompression;
-	this->m_sOurType.formattype = FORMAT_VideoInfo;
-        this->m_sOurType.bFixedSizeSamples = false;
-	this->m_sOurType.bTemporalCompression = true;
-	this->m_sOurType.pUnk = 0;
-        this->m_sOurType.cbFormat = bihs;
-        this->m_sOurType.pbFormat = (char*)this->m_sVhdr;
-        if(is_avc(this->m_sVhdr->bmiHeader.biCompression)) {
-          int size;
-          this->m_sOurType.formattype = FORMAT_MPEG2Video;
-          this->m_sOurType.pbFormat =
-                          (char*)ConvertVIHtoMPEG2VI(this->m_sVhdr, &size);
-          this->m_sOurType.cbFormat = size;
-        }
-
+        DS_VideoDecoder_SetInputType(this, format);
+ 
  	this->m_sVhdr2 = malloc(sizeof(VIDEOINFOHEADER2)+12);
         memset((char*)this->m_sVhdr2, 0, sizeof(VIDEOINFOHEADER2)+12);
 	this->m_sVhdr2->rcSource = this->m_sVhdr->rcSource;
