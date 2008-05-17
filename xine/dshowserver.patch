@@ -1,6 +1,67 @@
+diff -r 66e1654718fb po/es.po
+--- a/po/es.po	Mon Apr 14 22:38:03 2008 +0200
++++ b/po/es.po	Sat May 17 06:05:07 2008 -0700
+@@ -10,7 +10,7 @@ msgstr ""
+ msgstr ""
+ "Project-Id-Version: xine-lib.hg\n"
+ "Report-Msgid-Bugs-To: xine-devel@lists.sourceforge.net\n"
+-"POT-Creation-Date: 2008-04-02 01:36+0100\n"
++"POT-Creation-Date: 2008-03-19 13:16+0000\n"
+ "PO-Revision-Date: 2008-04-02 01:05+0200\n"
+ "Last-Translator: Carlos E. R. M. <carloser@users.sourceforge.net>\n"
+ "Language-Team: Spanish <none>\n"
+@@ -812,18 +812,18 @@ msgstr ""
+ "compatibles OSS"
+ 
+ # Cer: ¿pulseaudio?
+-#: src/audio_out/audio_pulse_out.c:715
++#: src/audio_out/audio_pulse_out.c:549
+ msgid "device used for pulseaudio"
+ msgstr "dispositivo usado para audio a pulsos"
+ 
+ # Cer: ¿pulseaudio? Estaba como "polypaudio" pero fuzzy.
+-#: src/audio_out/audio_pulse_out.c:716
++#: src/audio_out/audio_pulse_out.c:550
+ msgid "use 'server[:sink]' for setting the pulseaudio sink device."
+ msgstr ""
+ "use 'server[:sink]' para definir el sumidero del dispositivo audio a pulsos."
+ 
+ # Cer: ¿pulseaudio?
+-#: src/audio_out/audio_pulse_out.c:784
++#: src/audio_out/audio_pulse_out.c:583
+ msgid "xine audio output plugin using pulseaudio sound server"
+ msgstr ""
+ "complemento de xine de salida de audio usando servidor de sonido audio a "
+@@ -1059,7 +1059,7 @@ msgid "Restoring index..."
+ msgid "Restoring index..."
+ msgstr "Restaurando índice..."
+ 
+-#: src/demuxers/demux_avi.c:628 src/demuxers/demux_avi.c:1693
++#: src/demuxers/demux_avi.c:628 src/demuxers/demux_avi.c:1683
+ #, c-format
+ msgid "demux_avi: invalid avi chunk \"%c%c%c%c\" at pos %<PRIdMAX>\n"
+ msgstr "demux_avi: bloque avi inválido \"%c%c%c%c\" en posición %<PRIdMAX>\n"
+@@ -1080,7 +1080,7 @@ msgid "invalid FILM chunk size\n"
+ msgid "invalid FILM chunk size\n"
+ msgstr "tamaño de bloque FILM inválido\n"
+ 
+-#: src/demuxers/demux_film.c:344
++#: src/demuxers/demux_film.c:340
+ #, c-format
+ msgid "unrecognized FILM chunk\n"
+ msgstr "bloque FILM no reconocido\n"
+@@ -1226,7 +1226,7 @@ msgstr ""
+ msgstr ""
+ "demux_wc3movie: bloque SHOT referenció una paleta inválida (%d >= %d)\n"
+ 
+-#: src/demuxers/demux_wc3movie.c:410
++#: src/demuxers/demux_wc3movie.c:404
+ #, c-format
+ msgid "demux_wc3movie: There was a problem while loading palette chunks\n"
+ msgstr ""
 diff -r 66e1654718fb src/libxinevdec/Makefile.am
 --- a/src/libxinevdec/Makefile.am	Mon Apr 14 22:38:03 2008 +0200
-+++ b/src/libxinevdec/Makefile.am	Fri May 16 21:44:19 2008 -0700
++++ b/src/libxinevdec/Makefile.am	Sat May 17 06:05:07 2008 -0700
 @@ -22,7 +22,8 @@ xineplug_LTLIBRARIES = $(image_module) \
  	$(theora_module) \
  	xineplug_decode_bitplane.la \
@@ -20,7 +81,7 @@ diff -r 66e1654718fb src/libxinevdec/Makefile.am
 +xineplug_decode_dshowserver_la_LIBADD = $(XINE_LIB) -lrt -lpthread
 diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/dshowserver.c	Fri May 16 21:44:19 2008 -0700
++++ b/src/libxinevdec/dshowserver.c	Sat May 17 06:05:07 2008 -0700
 @@ -0,0 +1,395 @@
 +/*
 + * Copyright (C) 2008 Alan Nisota
@@ -258,7 +319,7 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +      char cmd[255], shm[80], sem1[80], sem2[80];
 +
 +      this->decoder_initialized = 1;
-+      snprintf(cmd, 255, "dshowserver -c CoreAVCDecoder.ax.1.7.0_unpacked -s %dx%d "
++      snprintf(cmd, 255, "dshowserver -c CoreAVCDecoder.ax -s %dx%d "
 +               "-g 09571a4b-f1fe-4c60-9760de6d310c7c31 "
 +               "-f 0x%08x -b %d -o 0x%08x -p %d -i %x -n %d %s&",
 +               this->width, this->height,
@@ -419,7 +480,7 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +};
 diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.c	Fri May 16 21:44:19 2008 -0700
++++ b/src/libxinevdec/nal_parser.c	Sat May 17 06:05:07 2008 -0700
 @@ -0,0 +1,516 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -939,7 +1000,7 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +}
 diff -r 66e1654718fb src/libxinevdec/nal_parser.h
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.h	Fri May 16 21:44:19 2008 -0700
++++ b/src/libxinevdec/nal_parser.h	Sat May 17 06:05:07 2008 -0700
 @@ -0,0 +1,141 @@
 +#ifndef NAL_PARSER_H_
 +#define NAL_PARSER_H_
