@@ -1,6 +1,6 @@
 Index: libmpcodecs/vd.c
 ===================================================================
---- libmpcodecs/vd.c	(revision 26763)
+--- libmpcodecs/vd.c	(revision 26791)
 +++ libmpcodecs/vd.c	(working copy)
 @@ -29,6 +29,7 @@
  extern vd_functions_t mpcodecs_vd_ffmpeg;
@@ -20,7 +20,7 @@ Index: libmpcodecs/vd.c
          &mpcodecs_vd_dmo,
 Index: Makefile
 ===================================================================
---- Makefile	(revision 26763)
+--- Makefile	(revision 26791)
 +++ Makefile	(working copy)
 @@ -5,6 +5,7 @@
  #			* DVD support
@@ -39,8 +39,8 @@ Index: Makefile
  SRCS_COMMON-$(AUDIO_INPUT)-$(ALSA1X) += stream/ai_alsa1x.c
  SRCS_COMMON-$(AUDIO_INPUT)-$(ALSA9)  += stream/ai_alsa.c
 --- /dev/null	2008-05-03 07:58:55.024032298 -0700
-+++ libmpcodecs/vd_dshowserver.c	2008-05-14 21:47:05.000000000 -0700
-@@ -0,0 +1,208 @@
++++ libmpcodecs/vd_dshowserver.c	2008-06-07 06:53:00.000000000 -0700
+@@ -0,0 +1,233 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <stdarg.h>
@@ -79,12 +79,36 @@ Index: Makefile
 +  VD_VERSION_MASK = 0xFFFF,
 +};
 +
-+static int sem_twait(sem_t *sem, int t) {
++#ifdef __APPLE__
++  void ALRMhandler(int sig) {
++  }
++  int sem_twait(sem_t *sem, int t) {
++    int ret;
++    alarm(t);
++    ret = sem_wait(sem);
++    printf("twait complete\n");
++    return ret;
++  }
++  void init_twait() {
++    sigset_t none;
++    struct sigaction sa;
++    sigemptyset(&none);
++    sigprocmask(SIG_SETMASK, &none, 0);
++
++    sa.sa_handler = ALRMhandler;
++    sa.sa_flags = 0;
++    sigemptyset(&sa.sa_mask);
++    sigaction(SIGALRM, &sa, 0);
++  }
++#else
++  int sem_twait(sem_t *sem, int t) {
 +    struct timespec ts;
 +    clock_gettime(CLOCK_REALTIME, &ts);
 +    ts.tv_sec += t;
 +    return(sem_timedwait(sem, &ts));
-+}
++  }
++  void init_twait() {}
++#endif
 +
 +static vd_info_t info = {
 +	"DirectShowServer video codecs",
@@ -136,6 +160,7 @@ Index: Makefile
 +    int numpages = 10;
 +    int memsize;
 +
++    init_twait();
 +    out_fmt = sh->codec->outfmt[sh->outfmtidx];
 +    switch(out_fmt){
 +      case IMGFMT_YUY2:
