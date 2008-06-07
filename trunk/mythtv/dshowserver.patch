@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp.orig	2008-05-14 21:35:06.000000000 -0700
-+++ libs/libmythtv/avformatdecoder.cpp	2008-05-14 21:40:27.000000000 -0700
+--- libs/libmythtv/avformatdecoder.cpp.orig	2008-06-06 05:22:57.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2008-06-07 06:31:29.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -197,7 +197,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
 +                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
 +                enc->codec_tag, bpp, out_fmt, getpid(), *(int *)pthread_self(),
-+                ((print_verbose_messages & VB_PLAYBACK == VB_PLAYBACK) ?
++                ((print_verbose_messages & VB_PLAYBACK) == VB_PLAYBACK ?
 +                            "-d" : ""));
 +            ds_mpi = new ds_mpi_t;
 +            snprintf(shm, 80, "/dshow_shm.%x", *(int *)pthread_self());
@@ -372,7 +372,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (((dec == "libmpeg2") &&
                       (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                        CODEC_ID_MPEG2VIDEO == enc->codec_id)) ||
-@@ -3584,7 +3865,21 @@
+@@ -3588,7 +3869,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -397,8 +397,8 @@ Index: libs/libmythtv/avformatdecoder.cpp
                          {
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro.orig	2008-05-14 21:35:06.000000000 -0700
-+++ libs/libmythtv/libmythtv.pro	2008-05-14 21:35:36.000000000 -0700
+--- libs/libmythtv/libmythtv.pro.orig	2008-06-06 05:22:57.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2008-06-07 06:33:20.000000000 -0700
 @@ -37,6 +37,7 @@
  LIBS += -lmythmpeg2-$$LIBVERSION    -lmythdvdnav-$$LIBVERSION
  LIBS += -lmythfreemheg-$$LIBVERSION -lmythlivemedia-$$LIBVERSION
