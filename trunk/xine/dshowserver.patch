@@ -1,6 +1,6 @@
 diff -r 66e1654718fb src/libxinevdec/Makefile.am
 --- a/src/libxinevdec/Makefile.am	Mon Apr 14 22:38:03 2008 +0200
-+++ b/src/libxinevdec/Makefile.am	Sat May 17 09:08:43 2008 -0700
++++ b/src/libxinevdec/Makefile.am	Sat Jun 07 07:17:27 2008 -0700
 @@ -22,7 +22,8 @@ xineplug_LTLIBRARIES = $(image_module) \
  	$(theora_module) \
  	xineplug_decode_bitplane.la \
@@ -20,7 +20,7 @@ diff -r 66e1654718fb src/libxinevdec/Makefile.am
 +xineplug_decode_dshowserver_la_LIBADD = $(XINE_LIB) -lrt -lpthread
 diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/dshowserver.c	Sat May 17 09:08:43 2008 -0700
++++ b/src/libxinevdec/dshowserver.c	Sat Jun 07 07:17:27 2008 -0700
 @@ -0,0 +1,426 @@
 +/*
 + * Copyright (C) 2008 Alan Nisota
@@ -450,8 +450,8 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +};
 diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.c	Sat May 17 09:08:43 2008 -0700
-@@ -0,0 +1,516 @@
++++ b/src/libxinevdec/nal_parser.c	Sat Jun 07 07:17:27 2008 -0700
+@@ -0,0 +1,520 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +
@@ -691,9 +691,13 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +    sps->pic_height_in_map_units_minus1 = read_exp_golomb(buf);*/
 +    sps->pic_width = 16 * (read_exp_golomb(buf) + 1);
 +    sps->pic_height = 16 * (read_exp_golomb(buf) + 1);
-+    //printf("res: %dx%d\n", sps->pic_width, sps->pic_height);
 +    
 +    sps->frame_mbs_only_flag = read_bits(buf, 1);
++ 	
++    /* compute the height correctly even for interlaced material */
++    sps->pic_height = (2-sps->frame_mbs_only_flag) * sps->pic_height;
++    //printf("res: %dx%d\n", sps->pic_width, sps->pic_height);
++ 
 +    if(!sps->frame_mbs_only_flag)
 +        sps->mb_adaptive_frame_field_flag = read_bits(buf, 1);
 +    
@@ -970,7 +974,7 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +}
 diff -r 66e1654718fb src/libxinevdec/nal_parser.h
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.h	Sat May 17 09:08:43 2008 -0700
++++ b/src/libxinevdec/nal_parser.h	Sat Jun 07 07:17:27 2008 -0700
 @@ -0,0 +1,141 @@
 +#ifndef NAL_PARSER_H_
 +#define NAL_PARSER_H_
