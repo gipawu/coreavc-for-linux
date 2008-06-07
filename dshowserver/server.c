@@ -67,6 +67,38 @@ void *get_shared_mem(char *shm, int memsize)
   return mem;
 }
 
+#ifdef __APPLE__
+  void ALRMhandler(int sig) {
+  }
+  int sem_twait(sem_t *sem, int t) {
+    int ret;
+    alarm(t);
+    ret = sem_wait(sem);
+    printf("twait complete\n");
+    return ret;
+  }
+  void init_twait() {
+    sigset_t none;
+    struct sigaction sa;
+    sigemptyset(&none);
+    sigprocmask(SIG_SETMASK, &none, 0);
+
+    sa.sa_handler = ALRMhandler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGALRM, &sa, 0);
+  }
+#else
+  int sem_twait(sem_t *sem, int t) {
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += t;
+    return(sem_timedwait(sem, &ts));
+  }
+  void init_twait() {}
+#endif
+
+
 int main(int argc, char *argv[])
 {
   char sem1[80], sem2[80], shm[80];
@@ -77,7 +109,6 @@ int main(int argc, char *argv[])
   char *buffer = NULL;
   char *picture = NULL;
   struct vd_struct *vd = NULL;
-  struct timespec ts;
   DS_VideoDecoder *dshowdec;
   int opt;
   char c;
@@ -94,12 +125,15 @@ int main(int argc, char *argv[])
     {"size", 1, 0, 's'},
     {0, 0, 0, 0},
   };
+
   char *id = NULL, *codec = NULL;
   GUID guid;
   BITMAPINFOHEADER bih, *bih_ptr = &bih;
   uint32_t fourcc = 0, fmt = 0;
   int bits = 0, ppid = 0;
   void *base = NULL;
+
+  init_twait();
 
   while(1) {
     c = getopt_long(argc, argv, "b:c:df:g:i:n:o:p:s:", Long_Options, &opt);
@@ -203,13 +237,8 @@ int main(int argc, char *argv[])
   //tell calling procedure that we are awake;
   sem_post(sem_wr);
   while(1) {
-    if (clock_gettime(CLOCK_REALTIME, &ts) == -1) {
-       perror("clock_gettime");
-       exit(1);
-    }
-    ts.tv_sec += 10; //Wait 10 seconds before we give up hope
     while(1) {
-      ret = sem_timedwait(sem_rd, &ts);
+      ret = sem_twait(sem_rd, 10);
       if (ret == 0)
         break;
       if(errno != ETIMEDOUT) {
