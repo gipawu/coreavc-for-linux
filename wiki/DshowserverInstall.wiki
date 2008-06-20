@@ -18,6 +18,10 @@ cd coreavc-for-linux
 {{{
 make -C dshowserver
 }}}
+    # Build on ia32 but use on ia64
+{{{
+make -C dshowserver STATIC=1
+}}}
     # Download static binaries (for x86_64)
       download the latest binary from [http://code.google.com/p/coreavc-for-linux/downloads/list here], then:
 {{{
