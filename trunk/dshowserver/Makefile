@@ -7,11 +7,14 @@ ifdef DEBUG
 else
   CFLAGS+= -O2
 endif
+ifdef STATIC
+  STATICBUILD= -static
+endif
 
 all: dshowserver
 
 dshowserver: server.o ../loader/libloader.a
-	$(CC) -o $@ -static $^ $(EXTRA_LIBS) -lpthread -lrt -lm
+	$(CC) $(STATICBUILD) -o $@ $^ $(EXTRA_LIBS) -lpthread -lrt -lm
 
 ../loader/libloader.a:
 	$(MAKE) -C ../loader $(LOADER_OPT)
