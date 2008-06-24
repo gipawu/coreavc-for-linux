@@ -1,7 +1,7 @@
-#summary Instructions for building and installing for use with MythTV
+#summary Instructions for building and installing for use with Xine
 #labels xine
 
-_*The Xine patch is still experimental*_
+_*The Xine patch is still experimental, and only works with the xinelib 1.1.* branch *
 
 = Introduction =
  Only the dshowserver method of xine will be supported from now on.  Any other patching methods are now deprecated
