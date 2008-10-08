@@ -1,6 +1,6 @@
 Index: libmpcodecs/vd.c
 ===================================================================
---- libmpcodecs/vd.c	(revision 26791)
+--- libmpcodecs/vd.c	(revision 27731)
 +++ libmpcodecs/vd.c	(working copy)
 @@ -29,6 +29,7 @@
  extern vd_functions_t mpcodecs_vd_ffmpeg;
@@ -11,26 +11,26 @@ Index: libmpcodecs/vd.c
  extern vd_functions_t mpcodecs_vd_vfw;
  extern vd_functions_t mpcodecs_vd_vfwex;
 @@ -61,6 +62,7 @@
- #ifdef HAVE_OGGTHEORA
+ #ifdef CONFIG_OGGTHEORA
  	&mpcodecs_vd_theora,
  #endif
 +        &mpcodecs_vd_dshowserver,
- #ifdef USE_WIN32DLL
+ #ifdef CONFIG_WIN32DLL
          &mpcodecs_vd_dshow,
          &mpcodecs_vd_dmo,
 Index: Makefile
 ===================================================================
---- Makefile	(revision 26791)
+--- Makefile	(revision 27731)
 +++ Makefile	(working copy)
-@@ -5,6 +5,7 @@
- #			* DVD support
+@@ -20,6 +20,7 @@
+ # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  
  include config.mak
 +EXTRALIBS += -lrt
  
  
  ###### variable declarations #######
-@@ -209,6 +210,7 @@
+@@ -223,6 +224,7 @@
                stream/stream_mf.c \
                stream/stream_null.c \
                stream/url.c \
@@ -38,9 +38,9 @@ Index: Makefile
  
  SRCS_COMMON-$(AUDIO_INPUT)-$(ALSA1X) += stream/ai_alsa1x.c
  SRCS_COMMON-$(AUDIO_INPUT)-$(ALSA9)  += stream/ai_alsa.c
---- /dev/null	2008-05-03 07:58:55.024032298 -0700
-+++ libmpcodecs/vd_dshowserver.c	2008-06-07 06:53:00.000000000 -0700
-@@ -0,0 +1,233 @@
+--- /dev/null	2008-04-22 12:31:08.000000000 -0700
++++ libmpcodecs/vd_dshowserver.c	2008-10-08 14:28:54.000000000 -0700
+@@ -0,0 +1,275 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <stdarg.h>
@@ -53,6 +53,7 @@ Index: Makefile
 +#include <sys/stat.h>
 +#include <fcntl.h>
 +#include <time.h>
++#include <sys/wait.h>
 +
 +#include "config.h"
 +
@@ -150,6 +151,47 @@ Index: Makefile
 +    return CONTROL_UNKNOWN;
 +}
 +
++static int my_system(const char *command)
++{
++    pid_t child = fork();
++
++    if (child < 0)
++    {
++        /* Fork failed */
++        return child;
++    }
++    else if (child == 0)
++    {
++        /* Child */
++        int i;
++        /* Close all open file descriptors except stdout/stderr */
++        for (i = sysconf(_SC_OPEN_MAX) - 1; i > 2; i--)
++            close(i);
++
++        /* Attach stdin to /dev/null */
++        /*
++        close(0);
++        int fd = open("/dev/null", O_RDONLY);
++        dup2(fd, 0);
++        if (fd != 0)
++            close(fd);
++        */
++        /* Run command */
++        execl("/bin/sh", "sh", "-c", command, NULL);
++        _exit(0);
++    }
++    else
++    {
++        /* Parent */
++        int status;
++
++        waitpid(child, &status, 0);
++        return status;
++    }
++
++    return 1;
++}
++    
 +// init driver
 +static int init(sh_video_t *sh){
 +    int ret;
@@ -211,7 +253,7 @@ Index: Makefile
 +    //Create read/write semaphores in locked state
 +    ds_mpi->sem_wr = sem_open(sem1, O_CREAT, 0644, 0);
 +    ds_mpi->sem_rd = sem_open(sem2, O_CREAT, 0644, 0);
-+    system(cmd);
++    my_system(cmd);
 +    ret = sem_twait(ds_mpi->sem_rd, 10);
 +    shm_unlink(shm);
 +    sem_unlink(sem1);
