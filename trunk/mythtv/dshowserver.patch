@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp.orig	2008-06-06 05:22:57.000000000 -0700
-+++ libs/libmythtv/avformatdecoder.cpp	2008-06-07 06:31:29.000000000 -0700
+--- libs/libmythtv/avformatdecoder.cpp.orig	2008-10-08 10:52:11.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2008-10-08 13:05:42.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -87,7 +87,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
      void DestroyMPEG2();
      void ResetMPEG2();
      int DecodeMPEG2Video(AVCodecContext *avctx, AVFrame *picture,
-@@ -154,13 +194,249 @@
+@@ -154,13 +194,254 @@
      bool SetVideoSize(const QSize &video_dim);
      DVDV *GetDVDVDecoder(void) { return dvdvdec; }
  
@@ -228,7 +228,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +            //Create read/write semaphores in locked state
 +            ds_mpi->sem_wr = sem_open(sem1, O_CREAT, 0644, 0);
 +            ds_mpi->sem_rd = sem_open(sem2, O_CREAT, 0644, 0);
-+            system(cmd);
++            myth_system(cmd);
 +            ret = sem_twait(ds_mpi->sem_rd, 10);
 +            shm_unlink(shm);
 +            sem_unlink(sem1);
@@ -262,6 +262,11 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +
 +void AvFormatDecoderPrivate::ResetDirectShow()
 +{
++    if (ds_mpi) {
++      ds_mpi->vd->cmd = VD_SEEK; //'3' is cmd for seek
++      sem_post(ds_mpi->sem_wr);
++      sem_twait(ds_mpi->sem_rd, 10);
++    }
 +}
 +
 +void yuy2i420(AVFrame *dst, char *src, int w, int l)
@@ -337,7 +342,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  /**
   * \brief Initialise either libmpeg2, or DVDV (Mac HW accel), to do decoding
   *
-@@ -382,7 +658,7 @@
+@@ -382,7 +663,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -346,7 +351,15 @@ Index: libs/libmythtv/avformatdecoder.cpp
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
        frame_decoded(0),             decoded_video_frame(NULL),
-@@ -1527,6 +1803,9 @@
+@@ -662,6 +943,7 @@
+                 avcodec_flush_buffers(enc);
+         }
+         d->ResetMPEG2();
++        d->ResetDirectShow();
+     }
+ 
+     // Discard all the queued up decoded frames
+@@ -1527,6 +1809,9 @@
                          }
                      }
  
@@ -356,7 +369,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      MythCodecID mcid;
                      mcid = VideoOutputXv::GetBestSupportedCodec(
                          /* disp dim     */ width, height,
-@@ -1536,6 +1815,7 @@
+@@ -1536,6 +1821,7 @@
                          /* test surface */ kCodec_NORMAL_END > video_codec_id,
                          /* force_xv     */ force_xv);
                      bool vcd, idct, mc;
@@ -364,7 +377,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      enc->codec_id = (CodecID)
                          myth2av_codecid(mcid, vcd, idct, mc);
  
-@@ -1591,6 +1871,7 @@
+@@ -1591,6 +1877,7 @@
                  }
  
                  // Initialize alternate decoders when needed...
@@ -372,7 +385,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (((dec == "libmpeg2") &&
                       (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                        CODEC_ID_MPEG2VIDEO == enc->codec_id)) ||
-@@ -3588,7 +3869,21 @@
+@@ -3588,7 +3875,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -397,8 +410,8 @@ Index: libs/libmythtv/avformatdecoder.cpp
                          {
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro.orig	2008-06-06 05:22:57.000000000 -0700
-+++ libs/libmythtv/libmythtv.pro	2008-06-07 06:33:20.000000000 -0700
+--- libs/libmythtv/libmythtv.pro.orig	2008-10-08 10:52:11.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2008-10-08 14:03:10.000000000 -0700
 @@ -37,6 +37,7 @@
  LIBS += -lmythmpeg2-$$LIBVERSION    -lmythdvdnav-$$LIBVERSION
  LIBS += -lmythfreemheg-$$LIBVERSION -lmythlivemedia-$$LIBVERSION
