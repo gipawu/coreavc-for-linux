@@ -1,7 +1,7 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
 --- libs/libmythtv/avformatdecoder.cpp.orig	2008-10-09 09:52:22.000000000 -0700
-+++ libs/libmythtv/avformatdecoder.cpp	2008-10-09 13:08:40.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2008-10-11 11:34:31.000000000 -0700
 @@ -1,12 +1,16 @@
  // C headers
  #include <cassert>
@@ -87,14 +87,15 @@ Index: libs/libmythtv/avformatdecoder.cpp
      void DestroyMPEG2();
      void ResetMPEG2();
      int DecodeMPEG2Video(AVCodecContext *avctx, AVFrame *picture,
-@@ -155,13 +195,253 @@
+@@ -155,13 +195,259 @@
      bool SetVideoSize(const QSize &video_dim);
      DVDV *GetDVDVDecoder(void) { return dvdvdec; }
  
 +    void DestroyDirectShow();
 +    void ResetDirectShow();
 +    int DecodeDirectShowVideo(AVCodecContext *avctx, AVFrame *picture,
-+                         int *got_picture_ptr, uint8_t *buf, int buf_size);
++                         int *got_picture_ptr, uint8_t *buf, int buf_size,
++                         long long *pts);
 +
    private:
      mpeg2dec_t *mpeg2dec;
@@ -296,16 +297,21 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +int AvFormatDecoderPrivate::DecodeDirectShowVideo(AVCodecContext *avctx,
 +                                             AVFrame *picture,
 +                                             int *got_picture_ptr,
-+                                             uint8_t *buf, int buf_size)
++                                             uint8_t *buf, int buf_size,
++                                             long long *pts)
 +{
 +    int ret;
 +    ds_mpi->vd->cmd = VD_DECODE; //'1' is cmd for decoding
 +    memcpy(ds_mpi->data, buf, buf_size);
 +    ds_mpi->vd->buflen = buf_size;
++    ds_mpi->vd->pts = (uint64_t)*pts;
 +    sem_post(ds_mpi->sem_wr);
 +    ret = sem_twait(ds_mpi->sem_rd, 10);
-+    if(ret == 0 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
++    if (ret == 0 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
 +        *got_picture_ptr = 1;
++        if (ds_mpi->vd->pts) {
++            *pts = (long long)ds_mpi->vd->pts;
++        }
 +        picture->interlaced_frame = (ds_mpi->vd->ret & 10) ? true : false;
 +        avctx->get_buffer(avctx, picture);
 +#if 0  //Using YV12
@@ -341,7 +347,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  /**
   * \brief Initialise either libmpeg2, or DVDV (Mac HW accel), to do decoding
   *
-@@ -383,7 +663,7 @@
+@@ -383,7 +669,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -350,7 +356,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
        is_db_ignored(gContext->IsDatabaseIgnored()),
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
-@@ -662,6 +942,7 @@
+@@ -662,6 +948,7 @@
                  avcodec_flush_buffers(enc);
          }
          d->ResetMPEG2();
@@ -358,7 +364,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
      }
  
      // Discard all the queued up decoded frames
-@@ -1535,6 +1816,9 @@
+@@ -1535,6 +1822,9 @@
                          }
                      }
  
@@ -368,7 +374,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      MythCodecID mcid;
                      mcid = VideoOutputXv::GetBestSupportedCodec(
                          /* disp dim     */ width, height,
-@@ -1544,6 +1828,7 @@
+@@ -1544,6 +1834,7 @@
                          /* test surface */ kCodec_NORMAL_END > video_codec_id,
                          /* force_xv     */ force_xv);
                      bool vcd, idct, mc;
@@ -376,7 +382,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      enc->codec_id = (CodecID)
                          myth2av_codecid(mcid, vcd, idct, mc);
  
-@@ -1599,6 +1884,7 @@
+@@ -1599,6 +1890,7 @@
                  }
  
                  // Initialize alternate decoders when needed...
@@ -384,7 +390,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (((dec == "libmpeg2") &&
                       (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                        CODEC_ID_MPEG2VIDEO == enc->codec_id)) ||
-@@ -3605,7 +3891,21 @@
+@@ -3605,7 +3897,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -402,7 +408,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +*/
 +                    if (d->HasDirectShow())
 +                        ret = d->DecodeDirectShowVideo(context, &mpa_pic,
-+                                                  &gotpicture, ptr, len);
++                                                  &gotpicture, ptr, len, &pts);
 +                    else if (d->HasDecoder())
                      {
                          if (decodeStillFrame)
