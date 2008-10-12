@@ -1,0 +1,106 @@
+.\" Process this file with
+.\" groff -man -Tascii registercodec.1.in
+.\"
+.TH REGISTERCODEC 1 "October 2008" "CoreAVC-for-linux"
+.SH NAME
+registercodec \- an interface to the registry used by dshowserver(1)
+.SH SYNOPSIS
+.B "registercodec -r"
+.I registry_file
+.B \-k
+.I registry_key
+.B \-v
+.I value
+.B [ -t
+.I type
+.B ]
+
+.B "registercodec -r"
+.I registry_file
+.B \-l
+
+.B "registercodec -r"
+.I registry_file
+.B \-k
+.I registry_key
+.B \-d
+
+.SH DESCRIPTION
+.B registercodec
+is a utility to allow modification of the registry file used by
+dshowserver.
+.SH OPTIONS
+.IP "-r registry_file"
+specify registry file to modify.  This should usually be ~/.mplayer/registry32
+.IP "-k registry_key"
+specify the key to modify.
+(e.g. -k "HKLM\\\\Software\\\\CoreCodec\\\\CoreAVC Pro\\\\Serial")
+.IP "-v value"
+value of the key to set.  This will be interpreted as a string if -t is
+not specified
+.IP "-t type"
+type of key to create.  one of 'dword', 'string'.  'string; is default
+.IP \-d
+delete specified key (this will be done recursively)
+.IP \-l
+list all keys/value pairs in the registry
+.SH EXAMPLES
+List all keys in the registry file
+.P
+.B registercodec
+-r ~/.mplayer/registry32 -l
+
+Specify registration key for CoreAVC
+.P
+.B registercodec
+-r ~/.mplayer/registry32
+-k "HKLM\\Software\\CoreCodec\\CoreAVC Pro\\Serial"
+-v "55555-55555-CORE-55555-55555"
+
+Specify decoding options to CoreAVC
+.P
+.B registercodec
+-r ~/.mplayer/registry32
+-k "HKLM\\Software\\IniFileMapping\\CoreAVC\\Settings\\C:\\coreavc.ini"
+-v "ilevels=2 olevels=2 di=3 deblock=7 ai=0 crop1088=0 vmr_ar=0"
+.SH NOTES
+The following are common options used for controlling CoreAVC
+.nf
+Deinterlacing:
+
+key: di
+3 : None
+4 : Blend
+5 : Bob
+6 : Hardware
+
+Aggressive Deinterlacing:
+
+key: ai
+0 : Off
+1 : On
+
+Crop 1088 to 1080:
+
+key: crop1088
+0 : Off
+1 : On
+
+Deblocking:
+
+key: deblock
+7 : Standard
+8 : Skip when safe
+9 : Skip always
+
+Force VMR AR Correction:
+
+key: vmr_ar
+0 : Off
+1 : On
+.fi
+.SH AUTHOR
+Alan Nisota <alannisota at gmail dot com>
+.SH "SEE ALSO"
+.BR dshowserver (1)
+
