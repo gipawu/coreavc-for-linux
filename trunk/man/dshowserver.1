@@ -1,0 +1,100 @@
+.\" Process this file with
+.\" groff -man -Tascii dshowserver.1.in
+.\"
+.TH DSHOWSERVER 1 "October 2008" "CoreAVC-for-linux"
+.SH NAME
+dshowserver \- an interface to the Windows CoreAVC H.264 codec
+.SH SYNOPSIS
+.B dshowserver -c 
+.I codec_name
+.B "-s <width>x<height> -g"
+.I guid
+.B -f
+.I input_format
+.B -o
+.I output_format
+.B [ -p
+.I parent_pid
+.B ] [ -i
+.I id
+.B ]
+.SH DESCRIPTION
+.B dshowserver
+is a frame-server to decode MPEG H.264 frames using the
+CoreAVC codec for Microsoft Windows.  It works by
+using a forked copy of mplayer's win32 DirectShow
+code which has been enhanced to work with the CoreAVC
+codec.  This code should work on both x86 and x86_64
+operating systems using the 32bit version of the CoreAVC
+codec.
+
+To use, you must have a legally purchased copy of the
+CoreAVCDecoder.ax file and a valid license key.  The key
+must be installed using registercodec before use.
+
+This utility is meant to be called by xine, mplayer or
+wine, and should not normally be called directly on the
+command-line
+.SH OPTIONS
+.IP "-c codec_name"
+specify codec to use (normally CoreAVCDecoder.ax).  This
+codec should be installed in /usr/lib/win32
+.IP "-s <width>x<height>"
+Dimensions of video.  This is used to define buffer sizes
+So it must be the maximum resolution that will be displayed
+e.g. -s 1920x1080
+.IP "-g guid"
+The GUID for the specified codec.  For CoreAVC, this will be:
+-g 09571a4b-f1fe-4c60-9760de6d310c7c31
+.IP "-f input_format"
+The input format (as a FOURCC) of this stream.
+e.g "-f 0x34363248" for H264
+.IP "-o output_format
+The output format (as a FOURCC) to return.
+e.g. "-o 0x30323449" for I420
+.IP "-p parent_pid"
+Parent pid.  dshowserver will exit if this pid is terminated
+.IP "-i id"
+A unique identifier used to define the shared-memory handle
+.SH EXAMPLES
+To verify that dshowserver is installed and configured properly:
+.nf
+
+dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g \\
+09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449
+
+.fi
+Which should return:
+.nf
+
+No id specified, assuming test mode
+Opening device
+len: 992
+ProductVersion: 1.7.0
+Decoder supports the following YUV formats: YUY2 UYVY YV12 I420 
+Decoder is capable of YUV output (flags 0x2b)
+Setting fmt
+Starting
+Initialization is complete
+
+.fi
+
+.SH NOTES
+a FOURCC is a 4-byte string defining a input/output standard.
+For dshowserver it is supplied as a hexdecimal value.
+To determine the value for a FOURCC, convert to hexadecimal and invert
+
+For example:
+
+I420 : 'I'=0x49 '4'=0x34 '2'=0x32 '0'=0x30 => 0x30323449
+
+H264 : 'H'=0x48 '2'=0x32 '6'=0x36 '4'=0x34 => 0x34363248
+
+Note that case is often important (the codec processes these
+so it is up to the codec whether it is case-sensitive or not)
+
+.SH AUTHOR
+Alan Nisota <alannisota at gmail dot com>
+.SH "SEE ALSO"
+.BR registercodec (1)
+
