@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 {
   char sem1[80], sem2[80], shm[80];
   sem_t *sem_rd, *sem_wr;
-  int width, height, memsize, ret;
+  int width, height, memsize, ret = 0;
   int pagecount = 0, pagesize;
   void *mem;
   char *buffer = NULL;
@@ -238,8 +238,8 @@ int main(int argc, char *argv[])
   sem_post(sem_wr);
   while(1) {
     while(1) {
-      ret = sem_twait(sem_rd, 10);
-      if (ret == 0)
+      int wait_ret = sem_twait(sem_rd, 10);
+      if (wait_ret == 0)
         break;
       if(errno != ETIMEDOUT) {
         //We didn't successfully lock
@@ -256,6 +256,7 @@ int main(int argc, char *argv[])
         DS_VideoDecoder_Destroy(dshowdec);
         exit(0);
       case VD_DECODE:
+        DS_VideoDecoder_FreeFrame(dshowdec);
         DS_VideoDecoder_SetPTS(dshowdec, vd->pts);
         vd->ret = DS_VideoDecoder_DecodeInternal(dshowdec, buffer, vd->buflen, 0, picture);
         vd->pts = DS_VideoDecoder_GetPTS(dshowdec);

@@ -11,9 +11,17 @@ extern "C" {
 typedef struct {
     char* frame_pointer;
     long frame_size;
-    int  updated;
+    int  state;
     unsigned long interlace;
     uint64_t pts_nsec;
+} SampleProcUserFrame;
+
+#define PD_MAX_FRAMES 10
+#define PD_SET 0x01
+#define PD_SENT 0x02
+typedef struct {
+  unsigned int lastFrame;
+  SampleProcUserFrame frame[PD_MAX_FRAMES];
 } SampleProcUserData;
 
 /**

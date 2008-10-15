@@ -26,6 +26,7 @@ struct {
     void *base;
     void *end;
     void *used[32];
+    unsigned char locked[32];
 } memstruct;
 
 void set_memstruct(void *base, int count, int size)
@@ -35,6 +36,7 @@ void set_memstruct(void *base, int count, int size)
     memstruct.pagesize = size;
     memstruct.pagecount = count;
     memset(memstruct.used, 0, sizeof(memstruct.used));
+    memset(memstruct.locked, 0, sizeof(memstruct.locked));
 }
 
 int get_memstruct_pagenum(void * __ptr)
@@ -56,7 +58,7 @@ static void *MALLOC (size_t __size)
     void *__ptr;
     pthread_mutex_lock(&mem_mutex);
     for(i=0; i < memstruct.pagecount; i++)
-	if(memstruct.used[i] == NULL)
+	if(memstruct.used[i] == NULL && ! memstruct.locked[i])
 	    break;
     if(i >= memstruct.pagecount || __size > memstruct.pagesize) {
 	__ptr = malloc(__size);
@@ -99,6 +101,19 @@ static void FREE(void *__ptr)
     memstruct.used[i] = NULL;
     pthread_mutex_unlock(&mem_mutex);
 }
+void memstruct_setlock(void * __ptr, unsigned char value)
+{
+    int i;
+    if(__ptr < memstruct.base || 
+       __ptr > memstruct.end)
+	return;
+    pthread_mutex_lock(&mem_mutex);
+    for(i=0; i < memstruct.pagecount; i++)
+      if(__ptr < memstruct.used[i])
+        memstruct.locked[i] = value;
+    pthread_mutex_unlock(&mem_mutex);
+}
+    
 #else
 #define MALLOC malloc
 #define REALLOC realloc

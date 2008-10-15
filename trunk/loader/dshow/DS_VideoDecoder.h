@@ -24,7 +24,4 @@ int DS_VideoDecoder_SetDirection(DS_VideoDecoder *this, int d);
 int DS_VideoDecoder_GetValue(DS_VideoDecoder *this, const char* name, int* value);
 int DS_VideoDecoder_SetValue(DS_VideoDecoder *this, const char* name, int value);
 int DS_SetAttr_DivX(char* attribute, int value);
-#ifdef USE_SHARED_MEM
-int get_memstruct_pagenum(void * __ptr);
-#endif
 #endif /* MPLAYER_DS_VIDEODECODER_H */

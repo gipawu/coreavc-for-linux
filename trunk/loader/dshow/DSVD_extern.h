@@ -54,6 +54,7 @@ int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *dsvd, const void* src, int s
 
 void DS_VideoDecoder_SetPTS(DS_VideoDecoder *dsvd, uint64_t pts_nsec);
 uint64_t DS_VideoDecoder_GetPTS(DS_VideoDecoder *dsvd);
+void DS_VideoDecoder_FreeFrame(DS_VideoDecoder *dsvd);
 
 void DS_VideoDecoder_SetInputType(DS_VideoDecoder *dsvd, BITMAPINFOHEADER* buffer);
 
