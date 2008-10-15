@@ -262,6 +262,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
                               * ((this->iv.m_obh.biBitCount + 7) / 8);
 
 
+        memset(&sampleProcData, 0, sizeof(sampleProcData));
 	this->m_pDS_Filter = DS_FilterCreate(dllname, guid, &this->m_sOurType, &this->m_sDestType,&sampleProcData);
 	
 	if (!this->m_pDS_Filter)
@@ -350,7 +351,7 @@ DS_VideoDecoder * DS_VideoDecoder_Open(char* dllname, GUID* guid, BITMAPINFOHEAD
     }*/
     return this;
 }
-static int framecount;
+static int framecount, framecount_in;
 void DS_VideoDecoder_Destroy(DS_VideoDecoder *this)
 {
     DS_VideoDecoder_StopInternal(this);
@@ -358,7 +359,7 @@ void DS_VideoDecoder_Destroy(DS_VideoDecoder *this)
     free(this->m_sVhdr);
     free(this->m_sVhdr2);
     DS_Filter_Destroy(this->m_pDS_Filter);
-    printf("************\nframecount=%d\n************\n", framecount);
+    printf("************\nin-frames: %d out-frames: %d\n************\n", framecount_in, framecount);
 }
 
 void DS_VideoDecoder_StartInternal(DS_VideoDecoder *this)
@@ -369,7 +370,7 @@ void DS_VideoDecoder_StartInternal(DS_VideoDecoder *this)
     this->m_pDS_Filter->Start(this->m_pDS_Filter);
     
     this->iv.m_State = START;
-    framecount=0;
+    framecount=0; framecount_in=0;
 }
 
 void DS_VideoDecoder_StopInternal(DS_VideoDecoder *this)
@@ -387,6 +388,7 @@ void DS_VideoDecoder_SeekInternal(DS_VideoDecoder *this)
     Debug printf("DS_VideoDecoder_SeekInternal\n");
     ret = this->m_pDS_Filter->m_pInputPin->vt->NewSegment(this->m_pDS_Filter->m_pInputPin,0,0,1);
     printf("NewSegment returned: %08x\n", ret);
+    memset(&sampleProcData, 0, sizeof(sampleProcData));
 }
 
 void DS_VideoDecoder_SetPTS(DS_VideoDecoder *this, uint64_t pts_nsec)
@@ -402,7 +404,16 @@ void DS_VideoDecoder_SetPTS(DS_VideoDecoder *this, uint64_t pts_nsec)
 
 uint64_t DS_VideoDecoder_GetPTS(DS_VideoDecoder *this)
 {
-    return sampleProcData.pts_nsec;
+    return sampleProcData.frame[sampleProcData.lastFrame].pts_nsec;
+}
+
+void DS_VideoDecoder_FreeFrame(DS_VideoDecoder *this)
+{
+    if(sampleProcData.frame[sampleProcData.lastFrame].state == PD_SENT) {
+      sampleProcData.frame[sampleProcData.lastFrame].state = 0;
+      memstruct_setlock(sampleProcData.frame[sampleProcData.lastFrame].frame_pointer, 0);
+      sampleProcData.lastFrame = (sampleProcData.lastFrame + 1) % PD_MAX_FRAMES;
+    }
 }
 
 int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int size, int is_keyframe, char* pImage)
@@ -447,28 +458,30 @@ int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int s
 	|| !this->m_pDS_Filter->m_pImp->vt->Receive)
 	printf("DecodeInternal ERROR???\n");
 #endif
-    sampleProcData.updated = 0;
+    framecount_in++;
     result = this->m_pDS_Filter->m_pImp->vt->Receive(this->m_pDS_Filter->m_pImp, sample);
     if (result)
     {
 	Debug printf("DS_VideoDecoder::DecodeInternal() error putting data into input pin %x\n", result);
     }
-    if(sampleProcData.updated)
+    if(sampleProcData.frame[sampleProcData.lastFrame].state == PD_SET)
     {
 #ifdef USE_SHARED_MEM
       int page;
-      page = get_memstruct_pagenum(sampleProcData.frame_pointer);
+      page = get_memstruct_pagenum(sampleProcData.frame[sampleProcData.lastFrame].frame_pointer);
       if (page != -1)
           ret |= (0x02 | (page << 8));
       else
 #endif
       if (pImage)
       {
-        memcpy(pImage, sampleProcData.frame_pointer, sampleProcData.frame_size);
+        memcpy(pImage, sampleProcData.frame[sampleProcData.lastFrame].frame_pointer,
+               sampleProcData.frame[sampleProcData.lastFrame].frame_size);
       }
       ret |= 0x01;
       framecount++;
-      if(sampleProcData.interlace)
+      sampleProcData.frame[sampleProcData.lastFrame].state = PD_SENT;
+      if(sampleProcData.frame[sampleProcData.lastFrame].interlace)
 	      ret |= 0x10;
     }
     sample->vt->Release((IUnknown*)sample);

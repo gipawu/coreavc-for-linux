@@ -13,6 +13,10 @@
 #include <stdlib.h>
 #include "win32.h" // printf macro
 
+#ifdef USE_SHARED_MEM
+#include <pthread.h>
+static pthread_mutex_t page_mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 typedef long STDCALL (*GETCLASS) (const GUID*, const GUID*, void**);
 
 #ifndef WIN32_LOADER
@@ -98,15 +102,31 @@ void DS_Filter_Destroy(DS_Filter* This)
 static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSample){
     BYTE* pointer;
     int len;
+    int i, done = 0;
     AM_MEDIA_TYPE *mt;
     REFERENCE_TIME stoptime;
  
     SampleProcUserData* pData=pUserData;
+    SampleProcUserFrame* pFrame;
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
+
+    pthread_mutex_lock(&page_mutex);
+    for(i = pData->lastFrame; ! done;) {
+      int j = (pData->lastFrame + 1) % PD_MAX_FRAMES;
+      if(! pData->frame[i].state) {
+        break;
+      }
+      if(j == pData->lastFrame) {
+        break;
+      }
+      i = j;
+    }
+    pthread_mutex_unlock(&page_mutex);
+    pFrame = &pData->frame[i];
     if(pSample->vt->GetMediaType &&
        pSample->vt->GetMediaType(pSample, &mt) == S_OK) {
       if(memcmp(&mt->formattype, &FORMAT_VideoInfo2, sizeof(GUID)) == 0) {
-	pData->interlace = ((VIDEOINFOHEADER2 *)(mt->pbFormat))->dwInterlaceFlags;
+	pFrame->interlace = ((VIDEOINFOHEADER2 *)(mt->pbFormat))->dwInterlaceFlags;
       }
     }
 
@@ -116,10 +136,11 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     if (len == 0)
 	len = pSample->vt->GetSize(pSample);//for iv50
 
-    pSample->vt->GetTime(pSample, &pData->pts_nsec, &stoptime);
-    pData->frame_pointer = pointer;
-    pData->frame_size = len;
-    pData->updated = 1;
+    pSample->vt->GetTime(pSample, &pFrame->pts_nsec, &stoptime);
+    memstruct_setlock(pointer, 1);
+    pFrame->frame_pointer = pointer;
+    pFrame->frame_size = len;
+    pFrame->state = PD_SET;
 /*
     FILE* file=fopen("./uncompr.bmp", "wb");
     char head[14]={0x42, 0x4D, 0x36, 0x10, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x36, 0x00, 0x00, 0x00};
