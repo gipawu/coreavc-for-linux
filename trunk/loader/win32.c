@@ -1722,6 +1722,21 @@ static int WINAPI expLoadIconA( long hinstance, char *name )
  return 1;
 }
 
+static int WINAPI expLoadImageA( long hinstance, char *name, unsigned int type,
+                                 int cx, int cy, unsigned int load)
+{
+ dbgprintf("LoadImageA( %ld, 0x%x %d %dx%d %d) => 1\n",hinstance,name, type, cx, cy, load);
+ return 1;
+}
+
+static void * WINAPI expCreateDialogParamA(long instance, char *name,
+                 void *parent, void *dialog_func, long param)
+{
+ dbgprintf("CreateDialogParamA( 0x%x, %s, 0x%x, 0x%x, %d\n", instance, name,
+           parent, dialog_func, param);
+ return NULL;
+}
+
 static int WINAPI expLoadStringA(long instance, long  id, void* buf, long size)
 {
     int result=LoadStringA(instance, id, buf, size);
@@ -5298,6 +5313,8 @@ struct exports exp_winmm[]={
 };
 struct exports exp_user32[]={
     FF(LoadIconA,-1)
+    FF(LoadImageA,-1)
+    FF(CreateDialogParamA,-1)
     FF(LoadStringA, -1)
     REMAP(LoadStringW, -1, LoadStringA)
     FF(wsprintfA, -1)
