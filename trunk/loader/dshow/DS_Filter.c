@@ -102,14 +102,14 @@ void DS_Filter_Destroy(DS_Filter* This)
 static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSample){
     BYTE* pointer;
     int len;
-    int i, done = 0;
+    int i = 0, done = 0;
     AM_MEDIA_TYPE *mt;
     REFERENCE_TIME stoptime;
  
     SampleProcUserData* pData=pUserData;
     SampleProcUserFrame* pFrame;
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
-
+#ifdef USE_SHARED_MEM
     pthread_mutex_lock(&page_mutex);
     for(i = pData->lastFrame; ! done;) {
       int j = (pData->lastFrame + 1) % PD_MAX_FRAMES;
@@ -122,6 +122,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
       i = j;
     }
     pthread_mutex_unlock(&page_mutex);
+#endif
     pFrame = &pData->frame[i];
     if(pSample->vt->GetMediaType &&
        pSample->vt->GetMediaType(pSample, &mt) == S_OK) {
@@ -158,7 +159,7 @@ void GetProductVersion(HMODULE hMod)
     HANDLE r;
     char *res;
     int len, i;
-    r = FindResourceA(hMod, 1, 16); //VS_VERSION_INFO, RT_VERSION
+    r = FindResourceA(hMod, (LPCSTR)1, (LPCSTR)16); //VS_VERSION_INFO, RT_VERSION
     res = (char *)LoadResource(hMod, r);
     len = SizeofResource(hMod, r);
     printf("len: %d\n", len);
@@ -168,7 +169,7 @@ void GetProductVersion(HMODULE hMod)
         res[i+16]=='e' && res[i+18]=='r' && res[i+20]=='s' && res[i+22]=='i' &&
         res[i+24]=='o' && res[i+26]=='n' && res[i+28]==0) {
 	char s[256];
-	WideCharToMultiByte(0,0,res+i+30,-1,s,256,NULL,NULL);
+	WideCharToMultiByte(0,0,(LPCWSTR)(res+i+30),-1,s,256,NULL,NULL);
 	printf("ProductVersion: %s\n", s);
       }
     }
@@ -362,7 +363,7 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
 	init++;
         break;
     }
-    tempAll->vt->Release(tempAll);
+    tempAll->vt->Release((IUnknown*)tempAll);
 
     if (!init)
     {

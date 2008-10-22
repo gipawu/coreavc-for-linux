@@ -118,6 +118,9 @@ void memstruct_setlock(void * __ptr, unsigned char value)
 #define MALLOC malloc
 #define REALLOC realloc
 #define FREE free
+void memstruct_setlock(void * __ptr, unsigned char value) {}
+int get_memstruct_pagenum(void * __ptr) { return -1;}
+void set_memstruct(void *base, int count, int size) {}
 #endif
 
 /**
@@ -514,7 +517,8 @@ static HRESULT STDCALL CMediaSample_SetMediaType(IMediaSample * This,
  */
 static HRESULT STDCALL CMediaSample_IsDiscontinuity(IMediaSample * This)
 {
-    Debug printf("CMediaSample_IsDiscontinuity(%p) called\n", This);
+    Debug printf("CMediaSample_IsDiscontinuity(%p) called => %d\n", This,
+                 ((CMediaSample*) This)->isDiscontinuity);
     return ((CMediaSample*) This)->isDiscontinuity;
 }
 
