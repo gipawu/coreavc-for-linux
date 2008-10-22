@@ -536,7 +536,8 @@ static HRESULT STDCALL COutputPin_EndOfStream(IPin * This)
  */
 static HRESULT STDCALL COutputPin_BeginFlush(IPin * This)
 {
-    return output_unimplemented("COutputPin_BeginFlush", This);
+    return S_OK;
+    //return output_unimplemented("COutputPin_BeginFlush", This);
 }
 
 /**
@@ -550,7 +551,8 @@ static HRESULT STDCALL COutputPin_BeginFlush(IPin * This)
  */
 static HRESULT STDCALL COutputPin_EndFlush(IPin * This)
 {
-    return output_unimplemented("COutputPin_EndFlush", This);
+    return S_OK;
+    //return output_unimplemented("COutputPin_EndFlush", This);
 }
 
 /**

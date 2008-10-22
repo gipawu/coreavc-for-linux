@@ -27,7 +27,7 @@ struct DS_VideoDecoder
     int m_bIsDivX4;            // for speed
 };
 static SampleProcUserData sampleProcData;
-
+static int discontinuity = 1;
 #include "DS_VideoDecoder.h"
 
 #include "wine/winerror.h"
@@ -384,9 +384,14 @@ void DS_VideoDecoder_SeekInternal(DS_VideoDecoder *this)
 {
     HRESULT ret;
     Debug printf("DS_VideoDecoder_SeekInternal\n");
+    ret = this->m_pDS_Filter->m_pInputPin->vt->BeginFlush(this->m_pDS_Filter->m_pInputPin);
+    //printf("BeginFlush returned: %08lx\n", ret);
+    ret = this->m_pDS_Filter->m_pInputPin->vt->EndFlush(this->m_pDS_Filter->m_pInputPin);
+    //printf("EndFlush returned: %08lx\n", ret);
     ret = this->m_pDS_Filter->m_pInputPin->vt->NewSegment(this->m_pDS_Filter->m_pInputPin,0,0,1);
-    printf("NewSegment returned: %08lx\n", ret);
+    //printf("NewSegment returned: %08lx\n", ret);
     memset(&sampleProcData, 0, sizeof(sampleProcData));
+    discontinuity = 1;
 }
 
 void DS_VideoDecoder_SetPTS(DS_VideoDecoder *this, uint64_t pts_nsec)
@@ -439,6 +444,8 @@ int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int s
     memcpy(ptr, src, size);
     sample->vt->SetSyncPoint(sample, is_keyframe);
     sample->vt->SetPreroll(sample, pImage ? 0 : 1);
+    sample->vt->SetDiscontinuity(sample, discontinuity);
+    discontinuity = 0;
     // sample->vt->SetMediaType(sample, &m_sOurType);
 
     // FIXME: - crashing with YV12 at this place decoder will crash
