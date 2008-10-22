@@ -1843,7 +1843,7 @@ static long WINAPI expGetVersionExW(OSVERSIONINFOW* c)
 }
 
 static HANDLE WINAPI expCreateSemaphoreA(char* v1, long init_count,
-					 long max_count, char* name)
+					 long max_count, const char* name)
 {
     pthread_mutex_t *pm;
     pthread_cond_t  *pc;
@@ -1979,7 +1979,7 @@ static long WINAPI expRegQueryValueExW(long key, const char* value, int* reserve
     dbgprintf("RegQueryValueExW(key 0x%x, value %s, reserved 0x%x, data 0x%x, count 0x%x)"
 	      " => 0x%x\n", key, dest, reserved, data, count, result);
     if(data && count)dbgprintf("  read %d bytes: '%s'\n", *count, data1);
-    MultiByteToWideChar(65001, 0x0, data1, -1, data, 256);
+    MultiByteToWideChar(65001, 0x0, data1, -1, (LPWSTR)data, 256);
     return result;
 }
 static long WINAPI expRegQueryValueExA(long key, const char* value, int* reserved, int* type, int* data, int* count)
@@ -3821,7 +3821,7 @@ static WIN_BOOL WINAPI expWriteFile(HANDLE h,LPCVOID pv,DWORD size,LPDWORD wr,LP
 static DWORD  WINAPI expSetFilePointer(HANDLE h, LONG val, LPLONG ext, DWORD whence)
 {
     int wh;
-    dbgprintf("SetFilePointer(%d, 0x%x, 0x%x = %d, %d)\n", h, val, ext, ext ? *ext : NULL, whence);
+    dbgprintf("SetFilePointer(%d, 0x%x, 0x%x = %d, %d)\n", h, val, ext, ext ? *ext : 0, whence);
     //why would DLL want temporary file with >2Gb size?
     switch(whence)
     {
@@ -4924,7 +4924,7 @@ static char * WINAPI expPathFindExtensionA(const char *path) {
   else {
     ext = strrchr(path, '.');
     if (!ext)
-      ext = &path[strlen(path)];
+      ext = (char *)&path[strlen(path)];
   }
   dbgprintf("PathFindExtensionA(0x%x = %s) => 0x%x, %s\n", path, path, ext, ext);
   return ext;
@@ -4933,11 +4933,11 @@ static char * WINAPI expPathFindExtensionA(const char *path) {
 static char * WINAPI expPathFindFileNameA(const char *path) {
   char *name;
   if (!path || strlen(path) < 2)
-    name = path;
+    name = (char *)path;
   else {
     name = strrchr(path - 1, '\\');
     if (!name)
-      name = path;
+      name = (char *)path;
   }
   dbgprintf("PathFindFileNameA(0x%x = %s) => 0x%x, %s\n", path, path, name, name);
   return name;

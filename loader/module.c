@@ -434,12 +434,13 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
 	    printf("Win32 LoadLibrary failed to load: %s\n", checked);
 
 #define RVA(x) ((char *)wm->module+(unsigned int)(x))
+
 	if (strstr(libname,"vp31vfw.dll") && wm)
 	{
 	    int i;
 
 	  // sse hack moved from patch dll into runtime patching
-          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==RVA(0x1000)) {
+          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==(FARPROC)RVA(0x1000)) {
 	    fprintf(stderr, "VP3 DLL found\n");
 	    for (i=0;i<18;i++) RVA(0x4bd6)[i]=0x90;
 	  }
@@ -449,7 +450,7 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
         if (strstr(libname,"vp5vfw.dll") && wm)
         {
           int i;
-          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==RVA(0x3930)) {
+          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==(FARPROC)RVA(0x3930)) {
             for (i=0;i<3;i++) RVA(0x4e86)[i]=0x90;
             for (i=0;i<3;i++) RVA(0x5a23)[i]=0x90;
             for (i=0;i<3;i++) RVA(0x5bff)[i]=0x90;
@@ -462,12 +463,12 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
         if (strstr(libname,"vp6vfw.dll") && wm)
         {
           int i;
-          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==RVA(0x3ef0)) {
+          if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==(FARPROC)RVA(0x3ef0)) {
             // looks like VP 6.1.0.2
             for (i=0;i<6;i++) RVA(0x7268)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x7e83)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x806a)[i]=0x90;
-          } else if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==RVA(0x4120)) {
+          } else if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==(FARPROC)RVA(0x4120)) {
             // looks like VP 6.2.0.10
             for (i=0;i<6;i++) RVA(0x7688)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x82c3)[i]=0x90;
@@ -475,7 +476,7 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
             for (i=0;i<6;i++) RVA(0x1d2cc)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x2179d)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x1977f)[i]=0x90;
-          } else if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==RVA(0x3e70)) {
+          } else if (PE_FindExportedFunction(wm, "DriverProc", TRUE)==(FARPROC)RVA(0x3e70)) {
             // looks like VP 6.0.7.3
             for (i=0;i<6;i++) RVA(0x7559)[i]=0x90;
             for (i=0;i<6;i++) RVA(0x81c3)[i]=0x90;
@@ -491,7 +492,7 @@ HMODULE WINAPI LoadLibraryExA(LPCSTR libname, HANDLE hfile, DWORD flags)
         {
           // The codec calls IsRectEmpty with coords 0,0,0,0 => result is 0
           // but it really wants the rectangle to be not empty
-          if (PE_FindExportedFunction(wm, "CreateInstance", TRUE)==RVA(0xb812)) {
+          if (PE_FindExportedFunction(wm, "CreateInstance", TRUE)==(FARPROC)RVA(0xb812)) {
             // Dll version is 10.0.0.3645
             *RVA(0x8b0f)=0xeb; // Jump always, ignoring IsRectEmpty result
           } else {
