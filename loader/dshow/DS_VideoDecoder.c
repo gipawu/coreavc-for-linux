@@ -75,7 +75,7 @@ static ct check[] = {
 		{0, 0, 0, 0},
 	    };
 
-
+#define AV_RB16(x)  ((((const uint8_t*)(x))[0] << 8) | ((const uint8_t*)(x))[1])
 DWORD avc_quant(BYTE *src, BYTE *dst, int len)
 {
     //Stolen from libavcodec h264.c
@@ -88,13 +88,13 @@ DWORD avc_quant(BYTE *src, BYTE *dst, int len)
     }
     p += 6;
     //cnt > 1 not supported?
-    cnt = (*p << 8) | *(p+1) + 2;
+    cnt = AV_RB16(p) + 2;
     memcpy(d, p, cnt);
     d+=cnt;
     p+=cnt;
     //assume pps cnt == 1 too
     p++;
-    cnt = (*p << 8) | *(p+1) + 2;
+    cnt = AV_RB16(p) + 2;
     memcpy(d, p, cnt);
     return d + cnt - dst;
       
@@ -130,7 +130,6 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
         DWORD               dwFlags;            
         DWORD               dwSequenceHeader[1];
     } *mp2vi;
-    unsigned char data[256];
     int extra = 0;
     if(vih->bmiHeader.biSize > sizeof(BITMAPINFOHEADER)) {
       extra = vih->bmiHeader.biSize-sizeof(BITMAPINFOHEADER);
@@ -147,7 +146,6 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
     memcpy(&mp2vi->hdr.bmiHeader, &vih->bmiHeader, sizeof(BITMAPINFOHEADER));
     mp2vi->hdr.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     if(extra) {
-      int i;
       if(is_avc(vih->bmiHeader.biCompression)) {
         mp2vi->dwFlags = 4; //What does this mean?
         mp2vi->cbSequenceHeader = avc_quant(
@@ -193,7 +191,7 @@ void DS_VideoDecoder_SetInputType(DS_VideoDecoder *this, BITMAPINFOHEADER * form
   this->m_sOurType.cbFormat = bihs;
   this->m_sOurType.pbFormat = (char*)this->m_sVhdr;
   if(is_avc(this->m_sVhdr->bmiHeader.biCompression)) {
-    int size, i;
+    int size;
     this->m_sOurType.formattype = FORMAT_MPEG2Video;
     this->m_sOurType.pbFormat =
                     (char*)ConvertVIHtoMPEG2VI(this->m_sVhdr, &size);
@@ -387,7 +385,7 @@ void DS_VideoDecoder_SeekInternal(DS_VideoDecoder *this)
     HRESULT ret;
     Debug printf("DS_VideoDecoder_SeekInternal\n");
     ret = this->m_pDS_Filter->m_pInputPin->vt->NewSegment(this->m_pDS_Filter->m_pInputPin,0,0,1);
-    printf("NewSegment returned: %08x\n", ret);
+    printf("NewSegment returned: %08lx\n", ret);
     memset(&sampleProcData, 0, sizeof(sampleProcData));
 }
 
@@ -419,7 +417,7 @@ void DS_VideoDecoder_FreeFrame(DS_VideoDecoder *this)
 int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int size, int is_keyframe, char* pImage)
 {
     IMediaSample* sample = 0;
-    char* ptr;
+    BYTE* ptr;
     int result;
     int ret = 0;
     
@@ -437,7 +435,7 @@ int DS_VideoDecoder_DecodeInternal(DS_VideoDecoder *this, const void* src, int s
 
 
     sample->vt->SetActualDataLength(sample, size);
-    sample->vt->GetPointer(sample, (BYTE **)&ptr);
+    sample->vt->GetPointer(sample, &ptr);
     memcpy(ptr, src, size);
     sample->vt->SetSyncPoint(sample, is_keyframe);
     sample->vt->SetPreroll(sample, pImage ? 0 : 1);
@@ -755,7 +753,7 @@ int DS_VideoDecoder_SetDestFmt(DS_VideoDecoder *this, int bits, unsigned int csp
     }
 
     if(this->m_pDS_Filter->m_pAll)
-        this->m_pDS_Filter->m_pAll->vt->Release(this->m_pDS_Filter->m_pAll);
+        this->m_pDS_Filter->m_pAll->vt->Release((IUnknown *)this->m_pDS_Filter->m_pAll);
     this->m_pDS_Filter->m_pAll=(IMemAllocator *)MemAllocatorCreate();
     if (!this->m_pDS_Filter->m_pAll)
     {
@@ -911,7 +909,7 @@ int DS_VideoDecoder_SetValue(DS_VideoDecoder *this, const char* name, int value)
     if (this->m_bIsDivX4) {
 	IDivxFilterInterface* pIDivx=NULL;
 //	printf("DS_SetValue for DIVX4, name=%s  value=%d\n",name,value);
-	if (this->m_pDS_Filter->m_pFilter->vt->QueryInterface((IUnknown*)this->m_pDS_Filter->m_pFilter, &IID_IDivxFilterInterface, (void**)&pIDivx))
+	if (this->m_pDS_Filter->m_pFilter->vt->QueryInterface((IUnknown*)this->m_pDS_Filter->m_pFilter, &IID_IDivxFilterInterface, (void *)&pIDivx))
 	{
 	    printf("No such interface\n");
 	    return -1;

@@ -221,7 +221,7 @@ static inline void dbgprintf(char* fmt, ...)
     {
 	va_list va;
         char tmpstr[1024];
-        sprintf(tmpstr, "tid:%08x ", pthread_self());
+        sprintf(tmpstr, "tid:%08x ", (uint32_t)pthread_self());
 	
 	va_start(va, fmt);
 	vsprintf(tmpstr + strlen(tmpstr), fmt, va);
@@ -605,19 +605,19 @@ static HMODULE WINAPI expGetModuleHandleA(const char* name)
 	else
 	    result=(HMODULE)(wm->module);
     }
-    if(!result)
+    if(!result && name)
     {
-	if(name && (strcasecmp(name, "kernel32")==0 || !strcasecmp(name, "kernel32.dll")))
+	if(strcasecmp(name, "kernel32")==0 || strcasecmp(name, "kernel32.dll")==0)
 	    result=MODULE_HANDLE_kernel32;
 #ifdef QTX
-	if(name && strcasecmp(name, "user32")==0)
+	else if(strcasecmp(name, "user32")==0)
 	    result=MODULE_HANDLE_user32;
 #endif
-	if(name && strcasecmp(name, "oleaut32")==0 || strcasecmp(name, "oleaut32.dll")==0)
+	else if(strcasecmp(name, "oleaut32")==0 || strcasecmp(name, "oleaut32.dll")==0)
 	    result=MODULE_HANDLE_oleaut32;
-	if(name && strcasecmp(name, "shell32")==0 || strcasecmp(name, "shell32.dll")==0)
+	else if(strcasecmp(name, "shell32")==0 || strcasecmp(name, "shell32.dll")==0)
 	    result=MODULE_HANDLE_shell32;
-	if(name && strcasecmp(name, "comctl32")==0 || strcasecmp(name, "comctl32.dll")==0)
+	else if(strcasecmp(name, "comctl32")==0 || strcasecmp(name, "comctl32.dll")==0)
 	    result=MODULE_HANDLE_comctl32;
     }
     dbgprintf("GetModuleHandleA('%s') => 0x%x\n", name, result);
@@ -909,7 +909,7 @@ static void* WINAPI expWaitForSingleObject(void* object, int duration)
             tm.tv_sec = tp.time;
             tm.tv_nsec = tp.millitm * 1000000 ;
             while(ml->semaphore==0 && !rc) {
-               if(rc = pthread_cond_timedwait(ml->pc,ml->pm, &tm) == ETIMEDOUT)
+               if((rc = pthread_cond_timedwait(ml->pc,ml->pm, &tm)) == ETIMEDOUT)
                    break;
             }
             if(rc == ETIMEDOUT) {
@@ -4698,7 +4698,7 @@ static void WINAPI expGlobalMemoryStatus(
 	lpmem->dwAvailPageFile = 16*1024*1024;
     }
     expGetSystemInfo(&si);
-    lpmem->dwTotalVirtual  = si.lpMaximumApplicationAddress-si.lpMinimumApplicationAddress;
+    lpmem->dwTotalVirtual  = (BYTE *)si.lpMaximumApplicationAddress-(BYTE *)si.lpMinimumApplicationAddress;
     /* FIXME: we should track down all the already allocated VM pages and substract them, for now arbitrarily remove 64KB so that it matches NT */
     lpmem->dwAvailVirtual  = lpmem->dwTotalVirtual-64*1024;
     memcpy(&cached_memstatus,lpmem,sizeof(MEMORYSTATUS));
@@ -5537,12 +5537,14 @@ struct libs libraries[]={
     LL(shell32)
 };
 
+typedef void function_pointer(char *, char *);
+
 static WIN_BOOL WINAPI ext_stubs(void)
 {
     volatile int idx = 0xdeadabcd;
     // make sure gcc does not do eip-relative call or something like that
-    volatile void (*my_printf)(char *, char *) = (void *)0xdeadfbcd;
-    my_printf("Called unk_%s\n", export_names[idx]);
+    volatile void *my_printf = (void *)0xdeadfbcd;
+    ((function_pointer *)my_printf)("Called unk_%s\n", export_names[idx]);
     return 0;
 }
 
@@ -5650,7 +5652,7 @@ no_dll:
 	j = strlen(expname);
 	for(i=0; i < pos; i++) {
 	    if(strncmp(expname,export_names[i], j) == 0)
-		return (void*)extcode+i*MAX_STUB_SIZE;
+		return (void*)(extcode+i*MAX_STUB_SIZE);
 	}
     }
     if(pos>150)return 0;
@@ -5725,7 +5727,7 @@ no_dll_byname:
 	j = strlen(name);
 	for(i=0; i < pos; i++) {
 	    if(strncmp(name,export_names[i], j) == 0)
-		return (void*)extcode+i*MAX_STUB_SIZE;
+		return (void*)(extcode+i*MAX_STUB_SIZE);
 	}
     }
     if(pos>150)return 0;// to many symbols
