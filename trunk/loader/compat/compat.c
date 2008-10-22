@@ -1,5 +1,5 @@
 //#define MSG_USE_COLORS
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -13,7 +13,7 @@
 extern char **environ;
 //get_path
 char *get_path(const char *filename){
-    char* pthn, *dir;
+    char* pthn, *dir=NULL;
     int i;
     for (i = 0; environ[i] != NULL; i++) {
       if(strncmp("HOME=", environ[i], 5) == 0) {

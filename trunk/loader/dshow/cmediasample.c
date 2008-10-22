@@ -63,8 +63,8 @@ static void *MALLOC (size_t __size)
     if(i >= memstruct.pagecount || __size > memstruct.pagesize) {
 	__ptr = malloc(__size);
     } else {
-	__ptr = memstruct.base+memstruct.pagesize*i;
-	memstruct.used[i] = __ptr + memstruct.pagesize;
+	__ptr = (BYTE *)memstruct.base+memstruct.pagesize*i;
+	memstruct.used[i] = (BYTE *)__ptr + memstruct.pagesize;
     }
     pthread_mutex_unlock(&mem_mutex);
     return __ptr;
@@ -391,7 +391,7 @@ static HRESULT STDCALL CMediaSample_IsPreroll(IMediaSample * This)
 static HRESULT STDCALL CMediaSample_SetPreroll(IMediaSample * This,
 					       long bIsPreroll)
 {
-    Debug printf("CMediaSample_SetPreroll(%p, %d) called\n", This, bIsPreroll);
+    Debug printf("CMediaSample_SetPreroll(%p, %ld) called\n", This, bIsPreroll);
     ((CMediaSample*)This)->isPreroll=bIsPreroll;
     return 0;
 }

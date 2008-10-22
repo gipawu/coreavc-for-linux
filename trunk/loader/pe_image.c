@@ -931,6 +931,7 @@ static void wine_sighandler(int x)
 WIN_BOOL PE_InitDLL( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
 {
     WIN_BOOL retv = TRUE;
+    void *oldsig;
     assert( wm->type == MODULE32_PE );
 
     
@@ -964,7 +965,7 @@ WIN_BOOL PE_InitDLL( WINE_MODREF *wm, DWORD type, LPVOID lpReserved )
 	}	
 	TRACE("for %s\n", wm->filename);
 	extend_stack_for_dll_alloca();
-        void *oldsig = signal(SIGSEGV, wine_sighandler);
+        oldsig = signal(SIGSEGV, wine_sighandler);
         retv = entry( wm->module, type, lpReserved );
         signal(SIGSEGV, oldsig);
     }
