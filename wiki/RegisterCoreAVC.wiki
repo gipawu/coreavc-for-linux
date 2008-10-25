@@ -10,15 +10,9 @@ As of Version 1.7.0, the Installation should complete within Wine (unverified). 
 = Details =
 Once CoreAVC has been installed you can likely find the CoreAVCDecoder.ax file in 'C:\Program Files\Core Codec\CoreAVC Professional\CoreAVCDecoder.ax'  You will need to copy this to your linux box in /usr/lib/win32
 
-If you are using dshowserver (for mythtv) do:
 {{{
 export REGISTRY=$HOME/.mplayer/registry32
 }}}
-If you are using mplayer or xine do:
-{{{
-export REGISTRY=$HOME/.mplayer/registry
-}}}
-
 Next you'll need to open Regedit and find the following keys:
 
 For CoreAVC 1.7.0:
