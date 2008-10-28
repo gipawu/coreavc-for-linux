@@ -12,8 +12,6 @@
 #define HAVE_LIBDL 1
 /* Define this if your system has vsscanf */
 #define HAVE_VSSCANF 1
-/* Build our Win32-loader */
-#define WIN32_LOADER 1
 /* Win32 DLL support */
 #define USE_WIN32DLL 1
 #define WIN32_PATH "/usr/lib/win32"

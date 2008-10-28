@@ -39,9 +39,6 @@ static int discontinuity = 1;
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/types.h>
-#ifdef HAVE_SYS_MMAN_H
-#include <sys/mman.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>  // labs
 

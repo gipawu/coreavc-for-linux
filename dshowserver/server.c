@@ -4,8 +4,6 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
-#include <semaphore.h>
 #include <time.h>
 #include <stdint.h>
 #include <getopt.h>
@@ -13,7 +11,14 @@
 #include <errno.h>
 #include <signal.h>
 
+#ifndef __MINGW32__
+#include <sys/mman.h>
+#else
+#include <windows.h>
+#endif
+
 #include "dshow/DSVD_extern.h"
+#include "timeout_sem.h"
 
 struct vd_struct {
   union {
@@ -24,6 +29,7 @@ struct vd_struct {
   uint64_t pts;
   uint32_t unused[8];
 };
+
 enum {
   VD_END = 1,
   VD_DECODE = 2,
@@ -32,6 +38,9 @@ enum {
   VD_HAS_BIH = 0x10000,
   VD_VERSION_MASK = 0xFFFF,
 };
+#ifdef SAVE_FRAMES
+  #include "dump_frames.c"
+#endif
 
 unsigned int print_verbose_messages = 0;
 
@@ -49,10 +58,15 @@ void make_bih(BITMAPINFOHEADER *bih, uint32_t w, uint32_t h, uint32_t tag) {
   bih->biClrImportant=0;
 }
 
-void *get_shared_mem(char *shm, int memsize)
+void *get_shared_mem(char *id, int memsize)
 {
-  int fd;
   void *mem;
+  char shm[80];
+
+#ifndef __MINGW32__
+  int fd;
+
+  snprintf(shm, 80, "/dshow_shm.%s", id);
   fd = shm_open(shm, O_RDWR, S_IRUSR | S_IWUSR);
   shm_unlink(shm);
   if(fd < 0) {
@@ -64,46 +78,55 @@ void *get_shared_mem(char *shm, int memsize)
     printf("failed to mmap shared memory\n");
     exit(1);
   }
+#else
+  HANDLE hMapFile;      // handle for the file's memory-mapped region
+  HANDLE hFile;
+
+  snprintf(shm, 80, "Z:\\dev\\shm\\dshow_shm.%s", id);
+  hFile = CreateFile(shm, 
+                     GENERIC_READ | GENERIC_WRITE,
+                     0, 
+                     NULL,
+                     OPEN_EXISTING, 
+                     FILE_ATTRIBUTE_NORMAL, 
+                     NULL);
+
+  if(! hFile == -1) {
+    fprintf(stderr, "failed to open file: %s\n", shm);
+    exit(1);
+  }
+  hMapFile = CreateFileMapping( hFile,          // current file handle
+                NULL,           // default security
+                PAGE_READWRITE, // read/write permission
+                0,              // size of mapping object, high
+                memsize,        // size of mapping object, low
+                NULL);          // name of mapping object
+
+  if (hMapFile == NULL) 
+  {
+    fprintf(stderr, "hMapFile is NULL: last error: %ld\n", GetLastError() );
+    exit(1);
+  }
+
+  // Map the view and test the results.
+
+  mem = MapViewOfFile(hMapFile,            // handle to 
+                      FILE_MAP_ALL_ACCESS, // read/write 
+                      0,                   // high-order 32 
+                      0,                   // low-order 32
+                      memsize);
+  if (mem == NULL) 
+  {
+    fprintf(stderr, "lpMapAddress is NULL: last error: %ld\n", GetLastError());
+    exit(1);
+  }
+#endif /*__MINGW32__*/
   return mem;
 }
 
-#ifdef __APPLE__
-  void ALRMhandler(int sig) {
-  }
-  int sem_twait(sem_t *sem, int t) {
-    int ret;
-    alarm(t);
-    ret = sem_wait(sem);
-    printf("twait complete\n");
-    return ret;
-  }
-  void init_twait() {
-    sigset_t none;
-    struct sigaction sa;
-    sigemptyset(&none);
-    sigprocmask(SIG_SETMASK, &none, 0);
-
-    sa.sa_handler = ALRMhandler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-    sigaction(SIGALRM, &sa, 0);
-  }
-#else
-  int sem_twait(sem_t *sem, int t) {
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    ts.tv_sec += t;
-    return(sem_timedwait(sem, &ts));
-  }
-  void init_twait() {}
-#endif
-
-
 int main(int argc, char *argv[])
 {
-  char sem1[80], sem2[80], shm[80];
-  sem_t *sem_rd, *sem_wr;
-  int width, height, memsize, ret = 0;
+  int width, height, memsize, ret = 0, port = 0;
   int pagecount = 0, pagesize;
   void *mem;
   char *buffer = NULL;
@@ -112,6 +135,7 @@ int main(int argc, char *argv[])
   DS_VideoDecoder *dshowdec;
   int opt;
   char c;
+  void *sem;
   static struct option Long_Options[] = {
     {"bits", 1, 0, 'b'},
     {"codec", 1, 0, 'c'},
@@ -123,20 +147,19 @@ int main(int argc, char *argv[])
     {"outfmt", 1, 0, 'o'},
     {"pid", 1, 0, 'p'},
     {"size", 1, 0, 's'},
+    {"port", 1, 0, 't'},
     {0, 0, 0, 0},
   };
 
   char *id = NULL, *codec = NULL;
-  GUID guid;
+  DS_GUID guid;
   BITMAPINFOHEADER bih, *bih_ptr = &bih;
   uint32_t fourcc = 0, fmt = 0;
   int bits = 0, ppid = 0;
   void *base = NULL;
 
-  init_twait();
-
   while(1) {
-    c = getopt_long(argc, argv, "b:c:df:g:i:n:o:p:s:", Long_Options, &opt);
+    c = getopt_long(argc, argv, "b:c:df:g:i:n:o:p:s:t:", Long_Options, &opt);
     if (c == EOF)
       break;
     switch (c) {
@@ -172,6 +195,10 @@ int main(int argc, char *argv[])
         break;
       case 'p':
         ppid = strtol(optarg, NULL, 0);
+        break;
+      case 't':
+        port = strtol(optarg, NULL, 0);
+        break;
     }
   }
   if(width*height == 0) {
@@ -182,16 +209,11 @@ int main(int argc, char *argv[])
     printf("No id specified, assuming test mode\n");
     make_bih(&bih, width, height, fourcc);
   } else {
-    snprintf(shm, 80, "/dshow_shm.%s", id);
-    snprintf(sem1, 80, "/dshow_sem1.%s", id);
-    snprintf(sem2, 80, "/dshow_sem2.%s", id);
-    printf("shm:%s\nsem1:%s\nsem2:%s\n", shm, sem1, sem2);
-
     pagesize = (width * height * bits / 8 + SAFETY_SIZE);
     memsize = sizeof(struct vd_struct) + width * height + 
               width * height * bits / 8 + pagesize * pagecount;
     //when using shared pages, must allocate before starting the codec
-    mem = get_shared_mem(shm, memsize);
+    mem = get_shared_mem(id, memsize);
     if(pagecount != 0) {
       base = ((char *)mem) + sizeof(struct vd_struct) + width * height
              + width * height * bits / 8;
@@ -222,34 +244,36 @@ int main(int argc, char *argv[])
   //Codec is now initialized
   if(! id)
     exit(0);
-  sem_rd = sem_open(sem1, 0);
-  sem_unlink(sem1);
-  if(sem_rd == SEM_FAILED) {
-    perror("sem_open(1)");
-    exit(1);
+  if(port) {
+    sem = timed_seminit(DS_SOCKET, &port, 0);
+  } else {
+    sem = timed_seminit(DS_SEMAPHORE, id, 0);
   }
-  sem_wr = sem_open(sem2, 0);
-  sem_unlink(sem2);
-  if(sem_wr == SEM_FAILED) {
-    perror("sem_open(2)");
-    exit(1);
-  }
-  //tell calling procedure that we are awake;
-  sem_post(sem_wr);
+  printf("Dshowserver Connected to host\n");
+#ifdef SAVE_FRAMES
+  printf("Initializing Dump\n");
+  init_dump(codec, &guid, bih_ptr, fourcc, fmt, bits, width, height);
+#endif
   while(1) {
     while(1) {
-      int wait_ret = sem_twait(sem_rd, 10);
-      if (wait_ret == 0)
+      int ok = timed_semwait(sem, 10);
+      if (ok == 1)
         break;
-      if(errno != ETIMEDOUT) {
+      if(ok != DS_TIMEOUT) {
         //We didn't successfully lock
         perror("sem_timedwait");
         exit(1);
-      } else if(kill(ppid, 0)) {
+      }
+#ifndef __MINGW32__
+      else if(kill(ppid, 0)) {
         fprintf(stderr, "Parent process %d died unexpectedly\n", ppid);
         exit(1);
       }
+#endif
     }
+#ifdef SAVE_FRAMES
+    dump_frame(vd, buffer);
+#endif
     switch(vd->cmd) {
       case VD_END:
         //We are done
@@ -271,7 +295,7 @@ int main(int argc, char *argv[])
         bih_ptr = (BITMAPINFOHEADER *)buffer;
         if(bih_ptr->biWidth != width || bih_ptr->biHeight != height) {
           printf("Cannot reload BITMAPINFOHEADER because new size (%dx%d) != old size (%dx%d)\n",
-                 bih_ptr->biWidth, bih_ptr->biHeight, width, height);
+                 (int)bih_ptr->biWidth, (int)bih_ptr->biHeight, width, height);
           vd->ret = -1;
         } else {
 	  printf("Starting reload\n");
@@ -286,9 +310,10 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Got illegal command %d\n", vd->cmd);
         ret = -1;
     }
-    sem_post(sem_wr);
+    timed_sempost(sem);
     if(ret == -1) {
       exit(1);
     }
   }
+  return 0;
 }

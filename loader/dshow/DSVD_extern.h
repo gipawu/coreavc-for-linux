@@ -14,7 +14,8 @@ typedef struct {
         uint16_t f2;
         uint16_t f3;
         uint8_t  f4[8];
-} GUID;
+} DS_GUID;
+#ifndef __MINGW32__
 
 #ifndef _BITMAPINFOHEADER_
 #define _BITMAPINFOHEADER_
@@ -32,7 +33,8 @@ typedef struct __attribute__((__packed__))
     int32_t 	biClrUsed;
     int32_t 	biClrImportant;
 } BITMAPINFOHEADER;
-#endif
+#endif /*_BITMAPINFOHEADER_*/
+#endif /*__MINGW32__*/
 
 //SAFERTY_SIZE == SAFETY_ACEL from cmediasample.c
 #ifndef SAFETY_SIZE
@@ -41,7 +43,7 @@ typedef struct __attribute__((__packed__))
 
 typedef struct _DS_VideoDecoder DS_VideoDecoder;
 
-DS_VideoDecoder *DS_VideoDecoder_Open(const char* dllname, GUID* guid, BITMAPINFOHEADER* format, int flip, int maxauto);
+DS_VideoDecoder *DS_VideoDecoder_Open(const char* dllname, DS_GUID* guid, BITMAPINFOHEADER* format, int flip, int maxauto);
 
 void DS_VideoDecoder_Destroy(DS_VideoDecoder *dsvd);
 
@@ -70,6 +72,7 @@ int DS_VideoDecoder_SetValue(DS_VideoDecoder *dsvd, const char* name, int value)
 int DS_SetAttr_DivX(char* attribute, int value);
 
 // registry functions
+/*
 __attribute__((__stdcall__)) long RegCloseKey(long key);
 __attribute__((__stdcall__)) long RegQueryValueExA(long key, const char* value, int* reserved,
                       int* type, int* data, int* count);
@@ -78,7 +81,7 @@ __attribute__((__stdcall__)) long RegCreateKeyExA(long key, const char* name, lo
                      void* sec_attr, int* newkey, int* status);
 __attribute__((__stdcall__)) long RegSetValueExA(long key, const char* name, long v1, long v2,
                     const void* data, long size);
-
+*/
 // From cmediasample.c
 void set_memstruct(void *base, int count, int size);
 

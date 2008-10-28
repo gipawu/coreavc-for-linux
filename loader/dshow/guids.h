@@ -67,6 +67,7 @@ extern const GUID IID_IMemAllocator;
 extern const GUID IID_IMediaSample;
 extern const GUID IID_DivxHidden;
 extern const GUID IID_Iv50Hidden;
+extern const GUID IID_ISpecifyPropertyPages;
 extern const GUID CLSID_DivxDecompressorCF;
 extern const GUID IID_IDivxFilterInterface;
 extern const GUID CLSID_IV50_Decoder;

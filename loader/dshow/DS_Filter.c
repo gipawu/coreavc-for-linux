@@ -102,7 +102,7 @@ void DS_Filter_Destroy(DS_Filter* This)
 static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSample){
     BYTE* pointer;
     int len;
-    int i = 0, done = 0;
+    int i = 0;
     AM_MEDIA_TYPE *mt;
     REFERENCE_TIME stoptime;
  
@@ -111,7 +111,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
 #ifdef USE_SHARED_MEM
     pthread_mutex_lock(&page_mutex);
-    for(i = pData->lastFrame; ! done;) {
+    for(i = pData->lastFrame; 1;) {
       int j = (pData->lastFrame + 1) % PD_MAX_FRAMES;
       if(! pData->frame[i].state) {
         break;
@@ -173,6 +173,19 @@ void GetProductVersion(HMODULE hMod)
 	printf("ProductVersion: %s\n", s);
       }
     }
+}
+
+void DS_ShowPropertyPage(DS_Filter* This)
+{
+	HRESULT result;
+	void *pointer;
+	result = This->m_pFilter->vt->QueryInterface(This, &IID_ISpecifyPropertyPages, (void*)&pointer);
+	if(result || ! pointer)
+	{
+		printf("Filter does not provide ISpecifyPropertyPages\n");
+		return;
+	}
+	printf("Filter does provide ISpecifyPropertyPages\n");
 }
 
 DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
@@ -371,5 +384,6 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
 	printf("Warning: DS_Filter() %s.  (DLL=%.200s)\n", em, dllname);
         This = 0;
     }
+    //DS_ShowPropertyPage(This);
     return This;
 }
