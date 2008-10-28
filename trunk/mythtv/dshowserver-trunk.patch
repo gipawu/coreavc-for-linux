@@ -1,11 +1,11 @@
 Index: libs/libmythtv/avformatdecoder.cpp
 ===================================================================
---- libs/libmythtv/avformatdecoder.cpp.orig	2008-10-09 09:52:22.000000000 -0700
-+++ libs/libmythtv/avformatdecoder.cpp	2008-10-11 11:34:31.000000000 -0700
-@@ -1,12 +1,16 @@
- // C headers
+--- libs/libmythtv/avformatdecoder.cpp.orig	2008-10-28 06:52:18.000000000 -0700
++++ libs/libmythtv/avformatdecoder.cpp	2008-10-28 07:10:42.000000000 -0700
+@@ -2,12 +2,16 @@
  #include <cassert>
  #include <unistd.h>
+ #include <cmath>
 +#include <fcntl.h>
  
  // C++ headers
@@ -19,15 +19,15 @@ Index: libs/libmythtv/avformatdecoder.cpp
  // MythTV headers
  #include "mythconfig.h"
  #include "avformatdecoder.h"
-@@ -42,6 +46,7 @@
- #include "../libavcodec/ac3_parser.h"
+@@ -45,6 +49,7 @@
+ #include "../libavformat/avio.h"
  #include "../libmythmpeg2/mpeg2.h"
  #include "ivtv_myth.h"
 +#include "libavformat/riff.h"
- // from libavcodec
- extern const uint8_t *ff_find_start_code(const uint8_t * restrict p, const uint8_t *end, uint32_t * restrict state);
  }
-@@ -131,21 +136,56 @@
+ 
+ #define LOC QString("AFD: ")
+@@ -136,21 +141,56 @@
  
  typedef MythDeque<AVFrame*> avframe_q;
  
@@ -87,7 +87,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
      void DestroyMPEG2();
      void ResetMPEG2();
      int DecodeMPEG2Video(AVCodecContext *avctx, AVFrame *picture,
-@@ -155,13 +195,259 @@
+@@ -160,13 +200,259 @@
      bool SetVideoSize(const QSize &video_dim);
      DVDV *GetDVDVDecoder(void) { return dvdvdec; }
  
@@ -142,7 +142,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +        bool found = false;
 +        QString codec;
 +        GUID guid = {0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0}};
-+        QString codec_file = QDir::homeDirPath() +
++        QString codec_file = QDir::homePath() +
 +                            QString("/.mythtv/dshowcodecs");
 +        if (! QFileInfo(codec_file).isFile()) {
 +            allow_dshow = false;
@@ -157,19 +157,19 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +        videotype = avc->name;
 +        QFile fh (codec_file);
 +        QString line;
-+        fh.open(IO_ReadOnly);
++        fh.open(QIODevice::ReadOnly);
 +        while (! fh.atEnd() && ! found) {
 +            QStringList fourc, guidlist;
 +            line = fh.readLine(1024);
-+            codec = line.section(':', 0, 0).stripWhiteSpace();
-+            fourc = QStringList::split(",",line.section(':', 1, 1));
-+            guidlist  = QStringList::split(",",line.section(':', 2, 2));
++            codec = line.section(':', 0, 0).simplified();
++            fourc = line.section(':', 1, 1).split(",");
++            guidlist  = line.section(':', 2, 2).split(",");
 +            if (guidlist.count() != 11)
 +                continue;
 +            for (QStringList::Iterator it = fourc.begin();
 +                 it != fourc.end(); it++)
 +            {
-+                if ((*it).stripWhiteSpace() == videotype)
++                if ((*it).simplified() == videotype)
 +                {
 +                    guid.f1 = guidlist[0].toUInt(0, 0);
 +                    guid.f2 = guidlist[1].toUShort(0, 0);
@@ -193,7 +193,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
 +            snprintf(cmd, 255, "dshowserver -c %s -s %dx%d "
 +                     "-g %08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x "
 +                     "-f 0x%08x -b %d -o 0x%08x -p %d -i %x %s&",
-+                codec.ascii(), enc->width, enc->height,
++                codec.toAscii(), enc->width, enc->height,
 +                guid.f1, guid.f2, guid.f3,
 +                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
 +                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
@@ -347,7 +347,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
  /**
   * \brief Initialise either libmpeg2, or DVDV (Mac HW accel), to do decoding
   *
-@@ -383,7 +669,7 @@
+@@ -388,7 +674,7 @@
                                   bool use_null_videoout,
                                   bool allow_libmpeg2)
      : DecoderBase(parent, pginfo),
@@ -356,7 +356,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
        is_db_ignored(gContext->IsDatabaseIgnored()),
        h264_kf_seq(new H264::KeyframeSequencer()),
        ic(NULL),
-@@ -662,6 +948,7 @@
+@@ -670,6 +956,7 @@
                  avcodec_flush_buffers(enc);
          }
          d->ResetMPEG2();
@@ -364,7 +364,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
      }
  
      // Discard all the queued up decoded frames
-@@ -1535,6 +1822,9 @@
+@@ -1549,6 +1836,9 @@
                          }
                      }
  
@@ -374,7 +374,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      MythCodecID mcid;
                      mcid = VideoOutputXv::GetBestSupportedCodec(
                          /* disp dim     */ width, height,
-@@ -1544,6 +1834,7 @@
+@@ -1558,6 +1848,7 @@
                          /* test surface */ kCodec_NORMAL_END > video_codec_id,
                          /* force_xv     */ force_xv);
                      bool vcd, idct, mc;
@@ -382,7 +382,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                      enc->codec_id = (CodecID)
                          myth2av_codecid(mcid, vcd, idct, mc);
  
-@@ -1599,6 +1890,7 @@
+@@ -1613,6 +1904,7 @@
                  }
  
                  // Initialize alternate decoders when needed...
@@ -390,7 +390,7 @@ Index: libs/libmythtv/avformatdecoder.cpp
                  if (((dec == "libmpeg2") &&
                       (CODEC_ID_MPEG1VIDEO == enc->codec_id ||
                        CODEC_ID_MPEG2VIDEO == enc->codec_id)) ||
-@@ -3605,7 +3897,21 @@
+@@ -3619,7 +3911,21 @@
                      int gotpicture = 0;
  
                      avcodeclock.lock();
@@ -415,13 +415,13 @@ Index: libs/libmythtv/avformatdecoder.cpp
                          {
 Index: libs/libmythtv/libmythtv.pro
 ===================================================================
---- libs/libmythtv/libmythtv.pro.orig	2008-10-09 09:52:22.000000000 -0700
-+++ libs/libmythtv/libmythtv.pro	2008-10-09 12:55:31.000000000 -0700
-@@ -40,6 +40,7 @@
- LIBS += -lmythfreemheg-$$LIBVERSION -lmythlivemedia-$$LIBVERSION
+--- libs/libmythtv/libmythtv.pro.orig	2008-10-28 06:52:18.000000000 -0700
++++ libs/libmythtv/libmythtv.pro	2008-10-28 06:52:45.000000000 -0700
+@@ -41,6 +41,7 @@
+ LIBS += -lmythmpeg2-$$LIBVERSION    -lmythdvdnav-$$LIBVERSION
  LIBS += -lmythdb-$$LIBVERSION
  LIBS += -lz $$EXTRA_LIBS $$QMAKE_LIBS_DYNLOAD
 +LIBS += -lrt
  
- TARGETDEPS += ../libmyth/libmyth-$${MYTH_SHLIB_EXT}
- TARGETDEPS += ../libavutil/libmythavutil-$${MYTH_SHLIB_EXT}
+ using_mheg: LIBS += -L../libmythfreemheg -lmythfreemheg-$$LIBVERSION
+ using_live: LIBS += -L../libmythlivemedia -lmythlivemedia-$$LIBVERSION
