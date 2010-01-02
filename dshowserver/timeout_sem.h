@@ -7,3 +7,4 @@ void *timed_seminit(unsigned int semtype, void *id, int is_host);
 void timed_semclean(void *_sem);
 void timed_sempost(void *_sem);
 int timed_semwait(void *_sem, int secs);
+void timed_semdelete(void *_sem);

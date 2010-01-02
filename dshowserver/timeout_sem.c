@@ -40,6 +40,7 @@ struct sem {
   int type;
   int initialized;
   int sockfd;
+  int listenfd;
   void *id;
   char mutex_rx[1];
   char mutex_tx[1];
@@ -275,6 +276,7 @@ int timed_semwait(void *_sem, int secs) {
     if(! sem->initialized) {
       ok = timed_accept(sem->sockfd, NULL, NULL, secs);
       if(ok != -1) {
+        sem->listenfd = sem->sockfd;
         sem->sockfd = ok;
         ok = 1;
         sem->initialized = 1;
@@ -286,6 +288,10 @@ int timed_semwait(void *_sem, int secs) {
 #ifdef DS_SEMAPHORE
   else if(sem->type == DS_SEMAPHORE) {
     ok = (sem_twait(sem->sem_rd, secs) == 0);
+    if(! sem->initialized) {
+      timed_semclean(sem);
+      sem->initialized = 1;
+    }
   }
 #endif
   if(!ok && errno == DS_ETIMEDOUT) {
@@ -321,13 +327,14 @@ void timed_semclean(void * _sem) {
 
 void *timed_seminit(unsigned int semtype, void *id, int is_host) {
   struct sem *sem;
-  sem = malloc(sizeof(struct sem));
+  sem = (struct sem *)malloc(sizeof(struct sem));
   memset(sem, 0, sizeof(struct sem));
   sem->type = semtype;
   sem->id = id;
+  sem->initialized = !(is_host);
   if(semtype == DS_SOCKET) {
+    sem->listenfd = -1;
     sem->sockfd = timed_sockinit((int *)id, is_host);
-    sem->initialized = !(is_host);
     if(sem->sockfd == -1) {
       perror("sock_init");
       exit(1);
@@ -336,7 +343,6 @@ void *timed_seminit(unsigned int semtype, void *id, int is_host) {
 #ifdef DS_SEMAPHORE  
   else if(semtype == DS_SEMAPHORE) {
     char semrd[80], semwr[80];
-    sem->initialized = 1;
     init_twait();
     snprintf(semrd, 80, "/dshow_sem%d.%s", is_host ? 2 : 1, (char *)id);
     snprintf(semwr, 80, "/dshow_sem%d.%s", is_host ? 1 : 2, (char *)id);
@@ -371,3 +377,21 @@ void *timed_seminit(unsigned int semtype, void *id, int is_host) {
   }
   return sem;
 }
+
+void timed_semdelete(void *_sem) {
+  struct sem *sem = (struct sem *) _sem;
+  if(sem->type == DS_SOCKET) {
+    close(sem->sockfd);
+    if(sem->listenfd != -1)
+      close(sem->listenfd);
+#ifdef DS_SEMAPHORE
+  } else if(sem->type == DS_SEMAPHORE) {
+    if(! sem->initialized)
+      timed_semclean(sem);
+    sem_close(sem->sem_wr);
+    sem_close(sem->sem_rd);
+#endif
+  }
+  free(sem);
+}
+

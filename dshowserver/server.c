@@ -229,7 +229,7 @@ int main(int argc, char *argv[])
     else
       make_bih(&bih, width, height, fourcc);
   }
-  printf("Opening device\n");
+  printf("Opening device (port is %d)\n", port);
   dshowdec = DS_VideoDecoder_Open(codec, &guid, bih_ptr, 0, 0);
   if(! dshowdec) {
     fprintf(stderr, "Failed to open win32 codec %s\n", codec);
@@ -245,8 +245,10 @@ int main(int argc, char *argv[])
   if(! id)
     exit(0);
   if(port) {
+    printf("Using socket based mutex\n");
     sem = timed_seminit(DS_SOCKET, &port, 0);
   } else {
+    printf("Using semaphore based mutex\n");
     sem = timed_seminit(DS_SEMAPHORE, id, 0);
   }
   printf("Dshowserver Connected to host\n");
