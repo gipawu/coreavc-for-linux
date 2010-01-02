@@ -1,0 +1,829 @@
+Index: libs/libmythtv/avformatdecoder.cpp
+===================================================================
+--- libs/libmythtv/avformatdecoder.cpp.orig	2010-01-02 15:05:30.000000000 -0800
++++ libs/libmythtv/avformatdecoder.cpp	2010-01-02 15:26:03.000000000 -0800
+@@ -2,12 +2,16 @@
+ #include <cassert>
+ #include <unistd.h>
+ #include <cmath>
++#include <fcntl.h>
+ 
+ // C++ headers
+ #include <algorithm>
+ #include <iostream>
+ using namespace std;
+ 
++// QT headers
++#include "qdir.h"
++
+ // MythTV headers
+ #include "mythconfig.h"
+ #include "avformatdecoder.h"
+@@ -53,6 +57,7 @@
+ #include "avio.h"
+ #include "../libmythmpeg2/mpeg2.h"
+ #include "ivtv_myth.h"
++#include "libavformat/riff.h"
+ }
+ 
+ #define LOC QString("AFD: ")
+@@ -181,21 +186,56 @@
+ 
+ typedef MythDeque<AVFrame*> avframe_q;
+ 
++struct vd_struct {
++  union {
++    uint32_t ret;
++    uint32_t cmd;
++  };
++  uint32_t buflen;
++  uint64_t pts;
++  uint32_t unused[8];
++} __attribute__((__packed__));
++
++enum {
++  VD_END = 1,
++  VD_DECODE = 2,
++  VD_SEEK = 3,
++  VD_HAS_BIH = 0x10000,
++  VD_VERSION_MASK = 0xFFFF,
++};
++#include "timeout_sem.c"
++#include <sys/mman.h>
++
++typedef struct {
++    int fd;
++    void *mem;
++    char *data;
++    char *picture;
++    int picsize;
++    void *sem;
++    struct vd_struct *vd;
++} ds_mpi_t;
++
++
+ /**
+  * Management of libmpeg2 decoding
+  */
+ class AvFormatDecoderPrivate
+ {
+   public:
+-    AvFormatDecoderPrivate(bool allow_libmpeg2)
+-        : mpeg2dec(NULL), dvdvdec(NULL), allow_mpeg2dec(allow_libmpeg2) { ; }
+-   ~AvFormatDecoderPrivate() { DestroyMPEG2(); }
++    AvFormatDecoderPrivate(bool allow_libmpeg2, bool allow_directshow)
++        : mpeg2dec(NULL), dvdvdec(NULL), allow_mpeg2dec(allow_libmpeg2),
++          ds_mpi(NULL), allow_dshow(allow_directshow) { ; }
++   ~AvFormatDecoderPrivate() { DestroyMPEG2(); DestroyDirectShow();}
+ 
+     bool InitMPEG2(const QString &dec);
+     bool HasMPEG2Dec(void) const { return (bool)(mpeg2dec); }
+     bool HasDVDVDec(void) const { return (bool)(dvdvdec); }
+     bool HasDecoder(void) const { return HasMPEG2Dec() || HasDVDVDec(); }
+ 
++    bool InitDirectShow(AVCodecContext *enc);
++    bool HasDirectShow() const { return (bool)(ds_mpi); }
++
+     void DestroyMPEG2();
+     void ResetMPEG2();
+     int DecodeMPEG2Video(AVCodecContext *avctx, AVFrame *picture,
+@@ -205,13 +245,252 @@
+     bool SetVideoSize(const QSize &video_dim);
+     DVDV *GetDVDVDecoder(void) { return dvdvdec; }
+ 
++    void DestroyDirectShow();
++    void ResetDirectShow();
++    int DecodeDirectShowVideo(AVCodecContext *avctx, AVFrame *picture,
++                         int *got_picture_ptr, uint8_t *buf, int buf_size,
++                         long long *pts);
++
+   private:
+     mpeg2dec_t *mpeg2dec;
+     DVDV       *dvdvdec;
+     bool        allow_mpeg2dec;
++    ds_mpi_t   *ds_mpi;
++    bool        allow_dshow;
+     avframe_q   partialFrames;
+ };
+ 
++bool AvFormatDecoderPrivate::InitDirectShow(AVCodecContext *enc)
++{
++    typedef struct {
++        uint32_t f1;
++        uint16_t f2;
++        uint16_t f3;
++        uint8_t  f4[8];
++    } GUID;
++    unsigned int codec_tag;
++    const struct AVCodecTag *bmp_taglists[] = {ff_codec_bmp_tags, 0};
++
++    codec_tag = av_codec_get_tag(bmp_taglists, enc->codec_id);
++    VERBOSE(VB_IMPORTANT, LOC + QString("Trying DirectShow for FOURCC 0x%1")
++            .arg(codec_tag, 8, 16));
++    if (!allow_dshow)
++        return false;
++    DestroyDirectShow();
++    if (codec_tag == 0) {
++        allow_dshow = false;
++        return false;
++    }
++//    QString dec = gContext->GetSetting("UseDirectShowVideoDecoder", "no");
++    QString dec = "yes";
++
++    if (dec == "yes")
++    {
++        bool found = false;
++        QString codec;
++        GUID guid = {0, 0, 0, {0, 0, 0, 0, 0, 0, 0, 0}};
++        QString codec_file = QDir::homePath() +
++                            QString("/.mythtv/dshowcodecs");
++        if (! QFileInfo(codec_file).isFile()) {
++            allow_dshow = false;
++            return false;
++        }
++        QString videotype;
++        AVCodec *avc = avcodec_find_decoder(enc->codec_id);
++        if (! avc) {
++           allow_dshow = false;
++           return false;
++        }
++        videotype = avc->name;
++        QFile fh (codec_file);
++        QString line;
++        fh.open(QIODevice::ReadOnly);
++        while (! fh.atEnd() && ! found) {
++            QStringList fourc, guidlist;
++            line = fh.readLine(1024);
++            codec = line.section(':', 0, 0).simplified();
++            fourc = line.section(':', 1, 1).split(",");
++            guidlist  = line.section(':', 2, 2).split(",");
++            if (guidlist.count() != 11)
++                continue;
++            for (QStringList::Iterator it = fourc.begin();
++                 it != fourc.end(); it++)
++            {
++                if ((*it).simplified() == videotype)
++                {
++                    guid.f1 = guidlist[0].toUInt(0, 0);
++                    guid.f2 = guidlist[1].toUShort(0, 0);
++                    guid.f3 = guidlist[2].toUShort(0, 0);
++                    for (int i = 0; i < 8; i++)
++                        guid.f4[i] = guidlist[i + 3].toUShort(0, 0);
++                    found = true;
++                }
++            }
++            if (found)
++                break;
++        }
++        fh.close();
++        if (found) {
++            int ret;
++            char cmd[255], shm[80];
++            uint32_t out_fmt;
++            int bpp;
++            int port = 0;
++            //out_fmt = 0x30323449; bpp = 12; //I420 12bpp
++            out_fmt = 0x32595559; bpp = 16; //YUY2 16bpp
++            snprintf(cmd, 255, "dshowserver --codec %s --size %dx%d "
++                     "--guid %08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x "
++                     "--fourc 0x%08x --bits %d --outfmt 0x%08x --pid %d --id %x "
++                     "--port %d %s&",
++                codec.toAscii().constData(), enc->width, enc->height,
++                guid.f1, guid.f2, guid.f3,
++                      guid.f4[0], guid.f4[1], guid.f4[2], guid.f4[3],
++                      guid.f4[4], guid.f4[5], guid.f4[6], guid.f4[7],
++                codec_tag, bpp, out_fmt, getpid(), *(int *)pthread_self(), port,
++                ((print_verbose_messages & VB_PLAYBACK) == VB_PLAYBACK ?
++                            "-d" : ""));
++            ds_mpi = new ds_mpi_t;
++            snprintf(shm, 80, "/dshow_shm.%x", *(int *)pthread_self());
++            ds_mpi->fd = shm_open(shm, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
++
++            ds_mpi->picsize =  enc->width * enc->height * bpp / 8;
++            int extra = 0;
++            if (enc->height % 16)
++                extra = (16 - enc->height % 16) * bpp / 8;
++            int memsize = sizeof(struct vd_struct) + enc->width * enc->height +
++                          ds_mpi->picsize + extra;
++            ftruncate(ds_mpi->fd, memsize);
++            ds_mpi->mem = mmap(NULL, memsize, PROT_READ | PROT_WRITE,
++                               MAP_SHARED, ds_mpi->fd, 0);
++            if(ds_mpi->mem == MAP_FAILED) {
++              perror("mmap");
++              allow_dshow = false;
++              return false;
++            }
++            memset((char *)ds_mpi->mem, 0, sizeof(struct vd_struct));
++
++            if (extra)
++                memset((char *)ds_mpi->mem + (memsize - extra), 0, extra);
++            ds_mpi->vd = (struct vd_struct *)ds_mpi->mem;
++            ds_mpi->data = ((char *)ds_mpi->mem) + sizeof(struct vd_struct);
++            ds_mpi->picture = ds_mpi->data + enc->width * enc->height;
++
++            //Create read/write semaphores in locked state
++            ds_mpi->sem = timed_seminit(DS_SOCKET, &port, 1);
++            //ds_mpi->sem = timed_seminit(DS_SEMAPHORE, *(int *)pthread_self(), 1);
++
++            myth_system(cmd);
++            ret = timed_semwait(ds_mpi->sem, 10);
++            shm_unlink(shm);
++            if(ret <= 0) {
++                VERBOSE(VB_IMPORTANT, LOC + "DirectShow filter failed");
++            } else {
++                VERBOSE(VB_IMPORTANT, LOC + "Found DirectShow filter");
++                return true;
++            }
++       }
++    }
++    allow_dshow = false;
++    return false;
++}
++
++void AvFormatDecoderPrivate::DestroyDirectShow()
++{
++    if (ds_mpi)
++    {
++        VERBOSE(VB_PLAYBACK, LOC + "Destroying filter");
++        ds_mpi->vd->cmd = VD_END; //'1' is cmd for terminating
++        timed_sempost(ds_mpi->sem);
++        close(ds_mpi->fd);
++	timed_semdelete(ds_mpi->sem);
++        delete ds_mpi;
++        ds_mpi = NULL;
++    }
++}
++
++void AvFormatDecoderPrivate::ResetDirectShow()
++{
++    if (ds_mpi) {
++      ds_mpi->vd->cmd = VD_SEEK; //'3' is cmd for seek
++      timed_sempost(ds_mpi->sem);
++      timed_semwait(ds_mpi->sem, 10);
++    }
++}
++
++void yuy2i420(AVFrame *dst, char *src, int w, int l)
++{
++  uint8_t *y, *u, *v;
++  y = dst->data[0];
++  u = dst->data[1];
++  v = dst->data[2];
++  int i,j;
++  for(i=0; i < l; i++) {
++    for(j=0; j < w; j+=2) {
++      *(y++) = *(src++);
++      *(u++) = *(src++);
++      *(y++) = *(src++);
++      *(v++) = *(src++);
++    }
++    i++;
++    for(j=0; j < w; j+=2) {
++      *(y++) = *src;
++      src+=2;
++      *(y++) = *src;
++      src+=2;
++   }
++  }
++}
++
++int AvFormatDecoderPrivate::DecodeDirectShowVideo(AVCodecContext *avctx,
++                                             AVFrame *picture,
++                                             int *got_picture_ptr,
++                                             uint8_t *buf, int buf_size,
++                                             long long *pts)
++{
++    int ret;
++    ds_mpi->vd->cmd = VD_DECODE; //'1' is cmd for decoding
++    memcpy(ds_mpi->data, buf, buf_size);
++    ds_mpi->vd->buflen = buf_size;
++    ds_mpi->vd->pts = (uint64_t)*pts;
++    timed_sempost(ds_mpi->sem);
++    ret = timed_semwait(ds_mpi->sem, 10);
++    if (ret == 1 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
++        *got_picture_ptr = 1;
++        if (ds_mpi->vd->pts) {
++            *pts = (long long)ds_mpi->vd->pts;
++        }
++        picture->interlaced_frame = (ds_mpi->vd->ret & 10) ? true : false;
++        avctx->get_buffer(avctx, picture);
++#if 0  //Using YV12
++        if(avctx->height & 0x0f) {
++           unsigned long pos, pos1, siz = avctx->height * avctx->width;
++           memcpy(picture->data[0], ds_mpi->picture, siz);
++           pos = siz;
++           pos1 = siz + avctx->width * (16 - avctx->height % 16);
++           siz /= 4;
++           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
++           pos+=siz;
++           pos1+=siz + avctx->width * ( 16 - avctx->height % 16) / 4;
++           memcpy(picture->data[0]+pos1, ds_mpi->picture+pos, siz);
++        } else {
++          memcpy(picture->data[0], ds_mpi->picture, ds_mpi->picsize);
++        }
++#else //Using YUY2
++        //YUY2 is a packed format so padding is easier
++        //int extra = 0;
++        //if(avctx->height % 16)
++            //extra = (16 - avctx->height % 16);
++        yuy2i420(picture, ds_mpi->picture,
++                 avctx->width, avctx->height);
++#endif
++    } else {
++      *got_picture_ptr = 0;
++    }
++    return buf_size;
++}
++
++/*************************************************/
++
+ /**
+  * \brief Initialise either libmpeg2, or DVDV (Mac HW accel), to do decoding
+  *
+@@ -434,7 +713,7 @@
+                                  bool allow_libmpeg2,
+                                  bool no_hardware_decode)
+     : DecoderBase(parent, pginfo),
+-      d(new AvFormatDecoderPrivate(allow_libmpeg2)),
++      d(new AvFormatDecoderPrivate(allow_libmpeg2, true)),
+       is_db_ignored(gContext->IsDatabaseIgnored()),
+       m_h264_parser(new H264Parser()),
+       ic(NULL),
+@@ -723,6 +1002,7 @@
+                 avcodec_flush_buffers(enc);
+         }
+         d->ResetMPEG2();
++        d->ResetDirectShow();
+     }
+ 
+     // Discard all the queued up decoded frames
+@@ -1673,6 +1953,9 @@
+                         }
+                     }
+ 
++                    if (CODEC_ID_H264 == enc->codec_id)
++                      force_xv = true;
++
+                     MythCodecID mcid;
+                     mcid = VideoOutputXv::GetBestSupportedCodec(
+                         /* disp dim     */ width, height,
+@@ -1754,6 +2037,7 @@
+                 }
+ 
+                 // Initialize alternate decoders when needed...
++              if (! d->InitDirectShow(enc))
+                 if ((dec == "libmpeg2") &&
+                     (CODEC_IS_MPEG(enc->codec_id)))
+                 {
+@@ -3905,7 +4189,21 @@
+                     int gotpicture = 0;
+ 
+                     avcodeclock.lock();
+-                    if (d->HasDecoder())
++/*                    printf("Trying: %d\n",len);
++                    if (0) {
++                      static int fnum = 0;
++                      char str[80];
++                      int fh;
++                      sprintf(str,"enc%d", fnum++);;
++                      fh = open(str, 01101,00777);
++                      write(fh, ptr, len);
++                      close(fh);
++                    }
++*/
++                    if (d->HasDirectShow())
++                        ret = d->DecodeDirectShowVideo(context, &mpa_pic,
++                                                  &gotpicture, ptr, len, &pts);
++                    else if (d->HasDecoder())
+                     {
+                         if (decodeStillFrame)
+                         {
+Index: libs/libmythtv/libmythtv.pro
+===================================================================
+--- libs/libmythtv/libmythtv.pro.orig	2010-01-02 15:05:30.000000000 -0800
++++ libs/libmythtv/libmythtv.pro	2010-01-02 15:06:01.000000000 -0800
+@@ -55,6 +55,7 @@
+ using_hdhomerun: LIBS += -L../libmythhdhomerun -lmythhdhomerun-$$LIBVERSION
+ using_backend: LIBS += -lmp3lame
+ LIBS += -lz $$EXTRA_LIBS $$QMAKE_LIBS_DYNLOAD
++LIBS += -lrt
+ 
+ TARGETDEPS += ../libmyth/libmyth-$${MYTH_SHLIB_EXT}
+ TARGETDEPS += ../libavutil/libmythavutil-$${MYTH_SHLIB_EXT}
+Index: libs/libmythtv/timeout_sem.c
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ libs/libmythtv/timeout_sem.c	2010-01-02 15:07:56.000000000 -0800
+@@ -0,0 +1,397 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <errno.h>
++#include <string.h>
++
++#ifndef __MINGW32__
++  #include <netdb.h>
++  #include <netinet/in.h>
++  #include <sys/socket.h>
++  #include <arpa/inet.h>
++  #include <sys/wait.h>
++
++  #define DS_EINPROGRESS EINPROGRESS
++  #define DS_ETIMEDOUT   ETIMEDOUT
++  #define DS_EWOULDBLOCK EWOULDBLOCK
++#else
++  #define _WIN32_WINNT 0x0501
++  #include <windows.h>
++  #include <winsock2.h>
++  #include <ws2tcpip.h>
++
++  #define DS_EINPROGRESS WSAEINPROGRESS
++  #define DS_ETIMEDOUT   WSAETIMEDOUT
++  #define DS_EWOULDBLOCK WSAEWOULDBLOCK
++#endif
++
++#include "timeout_sem.h"
++#ifdef __MINGW32__
++  #undef DS_SEMAPHORE
++#endif
++
++#ifdef DS_SEMAPHORE
++#include <time.h>
++#include <semaphore.h>
++#endif
++
++struct sem {
++  int type;
++  int initialized;
++  int sockfd;
++  int listenfd;
++  void *id;
++  char mutex_rx[1];
++  char mutex_tx[1];
++#ifdef DS_SEMAPHORE
++  sem_t *sem_rd;
++  sem_t *sem_wr;
++#endif /*DS_SEMAPHORE*/
++};
++
++#ifdef DS_SEMAPHORE
++#ifdef __APPLE__
++  void ALRMhandler(int sig) {
++  }
++  int sem_twait(sem_t *sem, int t) {
++    int ret;
++    alarm(t);
++    ret = sem_wait(sem);
++    printf("twait complete\n");
++    return ret;
++  }
++  void init_twait() {
++    sigset_t none;
++    struct sigaction sa;
++    sigemptyset(&none);
++    sigprocmask(SIG_SETMASK, &none, 0);
++
++    sa.sa_handler = ALRMhandler;
++    sa.sa_flags = 0;
++    sigemptyset(&sa.sa_mask);
++    sigaction(SIGALRM, &sa, 0);
++  }
++#else
++  int sem_twait(sem_t *sem, int t) {
++    struct timespec ts;
++    clock_gettime(CLOCK_REALTIME, &ts);
++    ts.tv_sec += t;
++    return(sem_timedwait(sem, &ts));
++  }
++  void init_twait() {}
++#endif
++#endif /*DS_SEMAPHORE */
++
++int setblocking(int sock, int block)
++{
++	unsigned long opts;
++#ifndef __MINGW32__
++	opts = fcntl(sock,F_GETFL);
++	if (opts < 0) {
++		perror("fcntl(F_GETFL)");
++		exit(EXIT_FAILURE);
++	}
++	opts = block ? (opts & ~O_NONBLOCK)
++                     : (opts | O_NONBLOCK);
++	if (fcntl(sock,F_SETFL,opts) < 0) {
++		perror("fcntl(F_SETFL)");
++		exit(EXIT_FAILURE);
++	}
++#else
++	opts = !(block);
++	if ( ioctlsocket( sock, FIONBIO, &opts ) == SOCKET_ERROR )
++	{
++		perror("ioctlsocket");
++		exit(EXIT_FAILURE);
++	}
++#endif
++	return 0;
++}
++
++int timed_connect(int sockfd, const struct sockaddr *serv_addr,
++                   socklen_t addrlen, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++  int valopt;
++  socklen_t lon;
++
++  // Trying to connect with timeout
++  res = connect(sockfd, serv_addr, addrlen);
++  if (res < 0 ) {
++     if (errno == DS_EINPROGRESS || errno == DS_EWOULDBLOCK || errno == 0) {
++        fprintf(stderr, "EINPROGRESS in connect() - selecting\n");
++        do {
++           tv.tv_sec = secs;
++           tv.tv_usec = 0;
++           FD_ZERO(&myset);
++           FD_SET(sockfd, &myset);
++           res = select(sockfd+1, NULL, &myset, &myset, &tv);
++           if (res < 0 && errno != EINTR) {
++              fprintf(stderr, "Error connecting (select) %d - %s\n", errno, strerror(errno));
++              return -1;
++           }
++           else if (res > 0) {
++              // Socket selected for write
++              lon = sizeof(int);
++              if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) {
++                 fprintf(stderr, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
++                 return -1;
++              }
++              // Check the value returned...
++              if (valopt) {
++                 fprintf(stderr, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt)
++);
++                 return -1;
++              }
++              break;
++           }
++           else {
++              fprintf(stderr, "Timeout in select() - Cancelling!\n");
++              return -1;
++           }
++        } while (1);
++     }
++     else {
++        fprintf(stderr, "Error connecting (connect) %d - %s\n", errno, strerror(errno));
++        return -1;
++     }
++  }
++  // I hope that is all
++  return 0;
++}
++int timed_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++
++  tv.tv_sec = secs;
++  tv.tv_usec = 0;
++  FD_ZERO(&myset);
++  FD_SET(sockfd, &myset);
++  res = select(sockfd+1, &myset, NULL, NULL, &tv);
++  if (res < 0 && errno != EINTR) {
++    fprintf(stderr, "Error accepting %d - %s\n", errno, strerror(errno));
++    return -1;
++  }
++  else if (res > 0) {
++    // Socket selected for read
++    return accept(sockfd, NULL, NULL);
++  }
++  errno = DS_ETIMEDOUT;
++  return -1;
++}
++int timed_recv(int sockfd, void *buf, size_t len, int flags, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++
++  tv.tv_sec = secs;
++  tv.tv_usec = 0;
++  FD_ZERO(&myset);
++  FD_SET(sockfd, &myset);
++  res = select(sockfd+1, &myset, NULL, NULL, &tv);
++  if (res < 0 && errno != EINTR) {
++    fprintf(stderr, "Error accepting %d - %s\n", errno, strerror(errno));
++    return -1;
++  }
++  else if (res > 0) {
++    // Socket selected for read
++    return recv(sockfd, buf, len, flags);
++  }
++  errno = DS_ETIMEDOUT;
++  return -1;
++}
++
++int timed_sockinit(int *port, int is_server)
++{
++    int sockfd;  // listen on sock_fd
++    struct sockaddr_in my_addr;
++    socklen_t peer_addr_size = sizeof(struct sockaddr_in);
++    int yes=1;
++
++#ifdef __MINGW32__
++    WSADATA wsaData;
++    if(WSAStartup(MAKEWORD(2, 2), &wsaData) !=0) {
++      printf("WSAStartup failed\n");
++      exit(1);
++    }
++#endif
++
++    memset(&my_addr, 0, sizeof(my_addr));
++    my_addr.sin_family = AF_INET;
++    my_addr.sin_addr.s_addr=INADDR_ANY;
++    my_addr.sin_port = *port;
++    if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
++            perror("server: socket");
++            exit(1);
++    }
++
++    setblocking(sockfd, 0);
++    if (is_server) {
++      if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes,
++              sizeof(int)) == -1) {
++        perror("setsockopt");
++        exit(1);
++      }
++
++      if (bind(sockfd, (struct sockaddr *) &my_addr,  sizeof(struct sockaddr_in)) == -1) {
++              close(sockfd);
++              perror("server: bind");
++              exit(1);
++      }
++      if (listen(sockfd, 1) == -1) {
++        perror("listen");
++        exit(1);
++      }
++      if (getsockname(sockfd, (struct sockaddr *)&my_addr, &peer_addr_size) == -1) {
++        perror("getsockname");
++        exit(1);
++      }
++      if(my_addr.sin_port == 0) {
++        printf("Failed to get port\n");
++        exit(1);
++      }
++      *port = my_addr.sin_port;
++    } else {
++      if (timed_connect(sockfd, (struct sockaddr *) &my_addr,  sizeof(struct sockaddr_in), 10) == -1)
++      {
++        close(sockfd);
++        perror("client: connect");
++        exit(1);
++      }
++    }
++
++    return sockfd;
++}
++
++int timed_semwait(void *_sem, int secs) {
++  struct sem *sem = (struct sem *)_sem;
++  int ok = -1;
++  if(sem->type == DS_SOCKET) {
++    if(! sem->initialized) {
++      ok = timed_accept(sem->sockfd, NULL, NULL, secs);
++      if(ok != -1) {
++        sem->listenfd = sem->sockfd;
++        sem->sockfd = ok;
++        ok = 1;
++        sem->initialized = 1;
++      }
++    } else {
++      ok = (timed_recv(sem->sockfd, sem->mutex_rx, 1, 0, secs) == 1);
++    }
++  }
++#ifdef DS_SEMAPHORE
++  else if(sem->type == DS_SEMAPHORE) {
++    ok = (sem_twait(sem->sem_rd, secs) == 0);
++    if(! sem->initialized) {
++      timed_semclean(sem);
++      sem->initialized = 1;
++    }
++  }
++#endif
++  if(!ok && errno == DS_ETIMEDOUT) {
++    ok = DS_TIMEOUT;
++  }
++  return ok;
++}
++
++void timed_sempost(void *_sem) {
++  struct sem *sem = (struct sem *)_sem;
++  if(sem->type == DS_SOCKET) {
++    send(sem->sockfd, sem->mutex_tx, 1, 0);
++  }
++#ifdef DS_SEMAPHORE
++  else if(sem->type == DS_SEMAPHORE) {
++    sem_post(sem->sem_wr);
++  }
++#endif
++}
++
++void timed_semclean(void * _sem) {
++#ifdef DS_SEMAPHORE
++  struct sem *sem = (struct sem *) _sem;
++  if(sem->type == DS_SEMAPHORE) {
++    char sem1[80], sem2[80];
++    snprintf(sem1, 80, "/dshow_sem1.%s", (char *)sem->id);
++    snprintf(sem2, 80, "/dshow_sem2.%s", (char *)sem->id);
++    sem_unlink(sem1);
++    sem_unlink(sem2);
++  }
++#endif
++}
++
++void *timed_seminit(unsigned int semtype, void *id, int is_host) {
++  struct sem *sem;
++  sem = (struct sem *)malloc(sizeof(struct sem));
++  memset(sem, 0, sizeof(struct sem));
++  sem->type = semtype;
++  sem->id = id;
++  sem->initialized = !(is_host);
++  if(semtype == DS_SOCKET) {
++    sem->listenfd = -1;
++    sem->sockfd = timed_sockinit((int *)id, is_host);
++    if(sem->sockfd == -1) {
++      perror("sock_init");
++      exit(1);
++    }
++  }
++#ifdef DS_SEMAPHORE
++  else if(semtype == DS_SEMAPHORE) {
++    char semrd[80], semwr[80];
++    init_twait();
++    snprintf(semrd, 80, "/dshow_sem%d.%s", is_host ? 2 : 1, (char *)id);
++    snprintf(semwr, 80, "/dshow_sem%d.%s", is_host ? 1 : 2, (char *)id);
++    if(is_host) {
++      sem->sem_rd = sem_open(semrd, O_CREAT, 0644, 0);
++      sem->sem_wr = sem_open(semwr, O_CREAT, 0644, 0);
++    } else {
++      sem->sem_rd = sem_open(semrd, 0);
++      sem->sem_wr = sem_open(semwr, 0);
++      sem_unlink(semwr);
++      sem_unlink(semrd);
++    }
++    if(sem->sem_rd == SEM_FAILED) {
++      timed_semclean(sem);
++      perror("sem_open(1)");
++      exit(1);
++    }
++    if(sem->sem_wr == SEM_FAILED) {
++      timed_semclean(sem);
++      perror("sem_open(2)");
++      exit(1);
++    }
++    //tell calling procedure that we are awake;
++    if(! is_host) {
++      sem_post(sem->sem_wr);
++    }
++  }
++#endif /*DS_SEMAPHORE*/
++  else {
++    fprintf(stderr, "Unknown type specified: %d\n", semtype);
++    exit(1);
++  }
++  return sem;
++}
++
++void timed_semdelete(void *_sem) {
++  struct sem *sem = (struct sem *) _sem;
++  if(sem->type == DS_SOCKET) {
++    close(sem->sockfd);
++    if(sem->listenfd != -1)
++      close(sem->listenfd);
++#ifdef DS_SEMAPHORE
++  } else if(sem->type == DS_SEMAPHORE) {
++    if(! sem->initialized)
++      timed_semclean(sem);
++    sem_close(sem->sem_wr);
++    sem_close(sem->sem_rd);
++#endif
++  }
++  free(sem);
++}
++
+Index: libs/libmythtv/timeout_sem.h
+===================================================================
+--- /dev/null	1970-01-01 00:00:00.000000000 +0000
++++ libs/libmythtv/timeout_sem.h	2010-01-02 15:07:59.000000000 -0800
+@@ -0,0 +1,10 @@
++#define DS_SOCKET 0x01
++#define DS_SEMAPHORE 0x02
++
++#define DS_TIMEOUT -1
++
++void *timed_seminit(unsigned int semtype, void *id, int is_host);
++void timed_semclean(void *_sem);
++void timed_sempost(void *_sem);
++int timed_semwait(void *_sem, int secs);
++void timed_semdelete(void *_sem);

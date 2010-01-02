@@ -1,3 +1,9 @@
+ifndef X_COMPILE
+  ifndef LOADER_WIN32
+    WINELIB=1
+  endif
+endif
+
 ifdef X_COMPILE
   AR = i586-mingw32msvc-ar
   RANLIB = i586-mingw32msvc-ranlib

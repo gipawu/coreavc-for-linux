@@ -1,5 +1,6 @@
 include ../config.mak
 
+
 CFLAGS=-I../loader -Wdisabled-optimization -Wno-pointer-sign -Wdeclaration-after-statement -I. -Wall -Wno-switch -Wpointer-arith -Wredundant-decls -pipe -ffast-math -fomit-frame-pointer -D_LARGEFILE_SOURCE -D__WINE__ -DNOAVIFILE_HEADERS -DMPLAYER
 CFLAGS+=-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer
 
@@ -35,6 +36,10 @@ all: $(OBJDIR) dshowserver $(REGISTERCODEC)
 
 dshowserver: $(OBJDIR)/server.o $(OBJDIR)/timeout_sem.o $(OBJDIR)/libloader.a
 	$(CC) $(STATICBUILD) -o $@ $^ $(LIBS)
+ifdef X_COMPILE
+	mv $@ $@.exe
+	ln -s $@.exe $@
+endif
 
 registercodec: ../loader/modify_reg.c ../loader/registry.c
 	$(CC) $(STATICBUILD) -I../loader -I../loader/compat -o $@ $<
