@@ -17,18 +17,14 @@ WIN32_LIBS = -lole32 -lws2_32
 LIBS = -lm
 
 ifdef X_COMPILE
-  USE_WIN32 = 1
+  LIBS += -lole32 -lws2_32
 else
-ifdef WINELIB
-  USE_WIN32 = 1
-endif
-endif
-
-ifdef USE_WIN32
-  LIBS += $(WIN32_LIBS)
-else
-  LIBS += -lpthread -lrt
-  REGISTERCODEC = registercodec
+  ifdef WINELIB
+    LIBS += -lole32 -lrt -lpthread
+  else
+    LIBS += -lpthread -lrt
+    REGISTERCODEC = registercodec
+  endif
 endif
 
 LIBS += $(EXTRA_LIBS)
