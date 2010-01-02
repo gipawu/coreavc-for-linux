@@ -1,0 +1,39 @@
+Last Update: 2010-01-02
+Alan Nisota
+
+This code allows teh Windows CoreAVC codec to be used in linux with various players (mplayer, mythtv, xine)
+You must purchase CoreAVC from the CoreCodec web-site to use this codec.
+
+As of r84, this code is only supported when used with Wine.  The mplayer 'loader' based code is no longer supported
+
+You must have a recent version of Wine installed.
+
+There are 3 ways to get a functional dshowserver:
+a) Use the included dshowserver.exe
+b) cross-compile with a mingw compile suite via:
+    make X_COMPILE=1
+c) Build a winelib version after installing all Wine headers:
+    make
+
+Next, install the CoreAVC codec via Wine:
+    wine CoreAVC Professional Edition-2.0.0_Setup.exe
+You must have a valid serial-number in order to complete the installation
+all releases from 1.0 to 2.0 should be supported via this method
+
+finally test dshowserver via:
+wine dshowserver -c <path to CoreAVCDecoder.ax> -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449 -d
+
+or
+
+wine dshowserver.exe -c <path to CoreAVCDecoder.ax> -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449 -d
+
+usually, the CoreAVCDecoder.ax will exist at:
+~/.wine/drive_c/Program Files/CoreCodec/CoreAVC Professional/CoreAVCDecoder.ax
+
+
+Currently the Xine patch is out of date, but the mplayer and mythtv patches should work properly.
+
+See the wiki at http://code.google.com/p/coreavc-for-linux for further details.
+
+Ensure that the full path to the CoreAVCDecoder.ax is provided in all config files, or that CoreAVCDecoder.ax is in the same directory as dshowserver
+
