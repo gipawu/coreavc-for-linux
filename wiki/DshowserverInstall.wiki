@@ -2,7 +2,7 @@
 
 = Introduction =
 
-The dshowserver is the recommended way to use CoreAVC with all players.  It is the easiest method to install, and works on both 64bit and 32bit operating systems.
+The dshowserver is the only supported way to interface CoreAVC to other Linux applications.  It should run on any platform that Wine works on
 
 = Details =
 
@@ -12,32 +12,37 @@ svn checkout http://coreavc-for-linux.googlecode.com/svn/trunk/ coreavc-for-linu
 cd coreavc-for-linux
 }}}
 
-2) Install dshowserver
+2) Install CoreAVC
+  * Download CoreAVC installer from CoreCorec website
+  * Install using Wine (apply your registration key here)
+{{{
+wine "CoreAVC Professional Edition-x.x.x_Setup.exe"
+}}}
+
+3) Install dshowserver
   * Choose one of the following options:
-    # Build from source (ia32 only)
+    # Build winelib version from source using winegcc
 {{{
-make -C dshowserver
+cd dshowserver && make
 }}}
-    # Build on ia32 but use on ia64
+    # Build exe version from source using mingw cross-compiler
 {{{
-make -C dshowserver STATIC=1
+cd dshowserver && make X_COMPILE=1
 }}}
-    # Download static binaries (for x86_64)
-      download the latest binary from [http://code.google.com/p/coreavc-for-linux/downloads/list here], then:
+    # Use included pre-compiled exe in 'precompiled/'
 {{{
-tar -xjf <path to dshowserver-ia32-rxxx.tar.bz2
+cd precompiled
 }}}
-  * Once you have the necessary binaries, do:
+  * Install the binaries (they will be installed in /usr/local/bin and /usr/local/share/dshowserver by default)
 {{{
-cp dshowserver /usr/local/bin
-cp ../loader/registercodec /usr/local/bin 
+sudo make install
+}}}
+  * Copy CoreAVCCodec.ax from Wine install to dshowserver dir:
+{{{
+sudo cp "~/.wine/drive_c/Program Files/CoreCodec/CoreAVC Professional Edition/CoreAVCDecoder.ax" /usr/local/share/dshowserver
 }}}
 
-3) Install CoreAVC to /usr/lib/win32/CoreAVCDecoder.ax
-
-4) Install CoreAVC license info as documented in [RegisterCoreAVC]
-
-5) Verify that dshowserver is working
+4) Verify that dshowserver is working
 {{{
 dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449
 }}}
@@ -46,7 +51,7 @@ Should return:
 No id specified, assuming test mode
 Opening device
 len: 992
-ProductVersion: 1.7.0
+ProductVersion: 2.0.0
 Decoder supports the following YUV formats: YUY2 UYVY YV12 I420 
 Decoder is capable of YUV output (flags 0x2b)
 Setting fmt
