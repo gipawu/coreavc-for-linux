@@ -7,7 +7,7 @@ svn checkout http://coreavc-for-linux.googlecode.com/svn/trunk/ coreavc-for-linu
 cd coreavc-for-linux
 }}}
 
-2) Install dshowserver forrlowing these instructions: [DshowserverInstall]
+2) Install dshowserver following these instructions: [DshowserverInstall]
 
 3) Install the mythtv patch
 {{{
