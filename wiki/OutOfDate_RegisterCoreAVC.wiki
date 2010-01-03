@@ -1,7 +1,8 @@
-#summary Registering CoreAVC
-
+----
+<font color="#FF0000">
 = THIS PAGE IS OUT OF DATE! =
 = Wine is now the only supported way to configure CoreAVC =
+</font>
 ----
 
 = Introduction =
@@ -126,5 +127,8 @@ registercodec -r $REGISTRY -k "HKEY_CURRENT_USER\\Software\\CoreCodec\\CoreAVC P
 }}}
 
 ----
+<font color="#FF0000">
 = THIS PAGE IS OUT OF DATE! =
 = Wine is now the only supported way to configure CoreAVC =
+</font>
+----
