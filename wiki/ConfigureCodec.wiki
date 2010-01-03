@@ -18,5 +18,5 @@ sh winetricks dcom98
 
 * Now run dshowserver with --config to bring up the config menu
 {{{
-dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449 --config
+dshowserver -c CoreAVCDecoder.ax --config
 }}}
