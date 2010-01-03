@@ -1,12 +1,4 @@
 #summary Instructions for building and installing for use with MythTV
-= Introduction =
-
-CoreAVC can be used with MythTV in 2 ways:
- * Use dshowserver and apply the dshowserver patch to mythtv (x86_64 and ia32)
- * Load the directshow code directly into mythtv using the libdshowloader patch (ia32 only)
-
-The following details the dshowserver method.  Instructions for installing via libdshowloader  can be found <<PUT LINK HERE>>
-
 = Details =
 
 1) Download the code from svn:
@@ -20,7 +12,7 @@ cd coreavc-for-linux
 3) Install the mythtv patch
 {{{
 cd <path to mythsrc>
-patch -p0 < <path to coreavc-for-linux>/mythtv/dshowserver.patch
+patch -p0 < <path to coreavc-for-linux>/mythtv/dshowserver-0.22.patch
 make
 make install
 cp <path to coreavc-for-linux>/mythtv/dshowcodecs ~/.mythtv 
