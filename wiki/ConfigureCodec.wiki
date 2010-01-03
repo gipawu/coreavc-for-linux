@@ -1,0 +1,22 @@
+#summary Instructions for configuring CoreAVC
+
+= Introduction =
+
+You can bring up the CoreAVC configuration page by following the instructions below.  You need to 1st install dcom98 as wine doesn't have native support for the OLE Property page needed to display the configuration dialog
+
+= Details =
+
+* Install dcom98 if you haven't already
+  # Get winetricks
+{{{
+wget http://kegel.com/wine/winetricks
+}}}
+  # Install dcom98
+{{{
+sh winetricks dcom98
+}}}
+
+* Now run dshowserver with --config to bring up the config menu
+{{{
+dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449 --config
+}}}
