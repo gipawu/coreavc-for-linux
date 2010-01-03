@@ -60,8 +60,26 @@ $(OBJDIR)/%.o: %.c ../loader/dshow/DSVD_extern.h
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean::
-	rm -f *.o *~
-	$(MAKE) -C ../loader clean
+	rm -f ../objs-mingw/*
+	rm -f ../objs-winelib/*
+	rm -f ../objs/*
 
 distclean:: clean
+	rm -f ../objs-mingw/*
+	rm -f ../objs-winelib/*
+	rm -f ../objs/*
 	rm -f dshowserver
+	rm -f dshowserver.exe*
+
+install::
+	mkdir -p $(PREFIX_SHARE)
+	mkdir -p $(PREFIX_EXE)
+ifdef WINE_EXT
+	cp dshowserver.$(WINE_EXT) $(PREFIX_SHARE)/
+	echo "#!/bin/sh" > $(PREFIX_EXE)/dshowserver
+	echo "echo 'Starting wine dshowserver.$(WINE_EXT)'" >> $(PREFIX_EXE)/dshowserver
+	echo 'wine $(PREFIX_SHARE)/dshowserver.$(WINE_EXT) $$*' >> $(PREFIX_EXE)/dshowserver
+	chmod +x $(PREFIX_EXE)/dshowserver
+else
+	cp dshowserver $(PREFIX_EXE)/
+endif
