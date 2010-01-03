@@ -18,10 +18,10 @@ WIN32_LIBS = -lole32 -lws2_32
 LIBS = -lm
 
 ifdef X_COMPILE
-  LIBS += -lole32 -lws2_32
+  LIBS += -lole32 -loleaut32 -luser32 -lws2_32
 else
   ifdef WINELIB
-    LIBS += -lole32 -lrt -lpthread
+    LIBS += -lole32 -loleaut32 -lrt -lpthread
   else
     LIBS += -lpthread -lrt
     REGISTERCODEC = registercodec

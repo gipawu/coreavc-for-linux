@@ -1075,3 +1075,10 @@ int DS_SetAttr_DivX(char* attribute, int value){
         return -200;
 }
 
+void DS_VideoDecoder_ShowProperties(DS_VideoDecoder *this)
+{
+    Debug printf("DS_VideoDecoder_ShowPropertes\n");
+    //cout << "DSSTART" << endl;
+    DS_ShowPropertyPage(this->m_pDS_Filter);
+}
+

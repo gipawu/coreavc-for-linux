@@ -139,6 +139,7 @@ int main(int argc, char *argv[])
   char c;
   void *sem;
   int cksum = 0;
+  int config = 0;
 
   static struct option Long_Options[] = {
     {"bits", 1, 0, 'b'},
@@ -153,6 +154,7 @@ int main(int argc, char *argv[])
     {"pid", 1, 0, 'p'},
     {"size", 1, 0, 's'},
     {"port", 1, 0, 't'},
+    {"config", 0, 0, 0},
     {0, 0, 0, 0},
   };
 
@@ -168,6 +170,11 @@ int main(int argc, char *argv[])
     if (c == EOF)
       break;
     switch (c) {
+      case 0:
+        if (strcmp(Long_Options[opt].name, "config") == 0) {
+          config = 1;
+        }
+        break;
       case 'i':
         id = optarg;
         break;
@@ -253,6 +260,10 @@ int main(int argc, char *argv[])
 
   printf("Initialization is complete\n");
   //Codec is now initialized
+
+  if(config)
+    DS_VideoDecoder_ShowProperties(dshowdec);
+
   if(! id)
     exit(0);
   if(port) {

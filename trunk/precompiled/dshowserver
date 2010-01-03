@@ -1,0 +1,3 @@
+#!/bin/sh
+echo 'Starting wine dshowserver.exe'
+wine ./dshowserver.exe $*

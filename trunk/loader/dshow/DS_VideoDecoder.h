@@ -24,4 +24,5 @@ int DS_VideoDecoder_SetDirection(DS_VideoDecoder *this, int d);
 int DS_VideoDecoder_GetValue(DS_VideoDecoder *this, const char* name, int* value);
 int DS_VideoDecoder_SetValue(DS_VideoDecoder *this, const char* name, int value);
 int DS_SetAttr_DivX(char* attribute, int value);
+void DS_VideoDecoder_ShowProperties(DS_VideoDecoder *this);
 #endif /* MPLAYER_DS_VIDEODECODER_H */
