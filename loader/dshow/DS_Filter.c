@@ -12,6 +12,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "win32.h" // printf macro
+#include "filterprop.h"
 
 static HANDLE page_mutex;
 typedef long STDCALL (*GETCLASS) (const GUID*, const GUID*, void**);
@@ -175,14 +176,22 @@ void GetProductVersion(HMODULE hMod)
 void DS_ShowPropertyPage(DS_Filter* This)
 {
 	HRESULT result;
-	void *pointer;
-	result = This->m_pFilter->vt->QueryInterface(This, &IID_ISpecifyPropertyPages, (void*)&pointer);
+	CAUUID cauuid;
+	HWND topwindow = GetTopWindow(0);
+
+	ISpecifyPropertyPages *pointer;
+	result = This->m_pFilter->vt->QueryInterface((IUnknown*)This->m_pFilter, &IID_ISpecifyPropertyPages, (void*)&pointer);
 	if(result || ! pointer)
 	{
 		printf("Filter does not provide ISpecifyPropertyPages\n");
 		return;
 	}
 	printf("Filter does provide ISpecifyPropertyPages\n");
+	result = pointer->vt->GetPages(pointer, &cauuid);
+	result = OleCreatePropertyFrame(topwindow, 30, 30, NULL, 1,
+                        (void *)&This->m_pFilter, cauuid.cElems,
+                        (GUID *)cauuid.pElems, 0, 0, NULL);
+
 }
 
 DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
@@ -192,16 +201,17 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
     int init = 0;
 //    char eb[250];
     const char* em = NULL;
-    page_mutex = CreateMutexA( 
-        NULL,              // default security attributes
-        FALSE,             // initially not owned
-        NULL);             // unnamed mutex
-
     MemAllocator* tempAll;
+
     ALLOCATOR_PROPERTIES props,props1;
     DS_Filter* This = malloc(sizeof(DS_Filter));
     if (!This)
 	return NULL;
+
+    page_mutex = CreateMutexA( 
+        NULL,              // default security attributes
+        FALSE,             // initially not owned
+        NULL);             // unnamed mutex
 
 #ifdef WIN32_LOADER
     CodecAlloc();
@@ -386,6 +396,5 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
 	printf("Warning: DS_Filter() %s.  (DLL=%.200s)\n", em, dllname);
         This = 0;
     }
-    //DS_ShowPropertyPage(This);
     return This;
 }

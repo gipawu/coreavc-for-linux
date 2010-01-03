@@ -53,6 +53,7 @@ struct DS_Filter
 DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
 			   AM_MEDIA_TYPE* in_fmt, AM_MEDIA_TYPE* out_fmt,SampleProcUserData* pUserData);
 void DS_Filter_Destroy(DS_Filter* This);
+void DS_ShowPropertyPage(DS_Filter* This);
 
 #if defined(__cplusplus)
 }
