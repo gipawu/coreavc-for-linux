@@ -34,7 +34,7 @@ LIBS += $(EXTRA_LIBS)
 
 all: $(OBJDIR) dshowserver $(REGISTERCODEC)
 
-dshowserver: $(OBJDIR)/server.o $(OBJDIR)/timeout_sem.o $(OBJDIR)/crc32.o $(OBJDIR)/libloader.a
+dshowserver: $(OBJDIR)/server.o $(OBJDIR)/timeout_sem.o $(OBJDIR)/defaults.o $(OBJDIR)/crc32.o $(OBJDIR)/libloader.a
 	$(CC) $(STATICBUILD) -o $@ $^ $(LIBS)
 ifdef X_COMPILE
 	mv $@ $@.exe
