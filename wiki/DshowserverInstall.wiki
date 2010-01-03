@@ -49,7 +49,7 @@ sudo cp "~/.wine/drive_c/Program Files/CoreCodec/CoreAVC Professional Edition/Co
 
 4) Verify that dshowserver is working
 {{{
-dshowserver -c CoreAVCDecoder.ax -s 1280x720 -g 09571a4b-f1fe-4c60-9760de6d310c7c31 -b 12 -f 0x34363248 -o 0x30323449
+dshowserver -c CoreAVCDecoder.ax
 }}}
 Should return:
 {{{
