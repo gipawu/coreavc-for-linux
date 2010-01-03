@@ -33,7 +33,7 @@ cd dshowserver && make X_COMPILE=1
 {{{
 cd precompiled
 }}}
-  * Install the binaries (they will be installed in /usr/local/bin and /usr/local/share/dshowserver by default, but this can be changed by adding PREFIX=<path> to the 'make install' command)
+  * Install the binaries (they will be installed in /usr/local/bin and /usr/local/share/dshowserver by default, but this can be changed by adding PREFIX=`<path>` to the 'make install' command)
     # If you are using the precompiled exe or a winelib build:
 {{{
 sudo make install
@@ -63,3 +63,5 @@ Setting fmt
 Starting
 Initialization is complete
 }}}
+
+5) You can configure CoreAVC by following the instructions on the [ConfigureCodec] page
