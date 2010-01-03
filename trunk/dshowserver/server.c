@@ -19,6 +19,7 @@
 
 #include "dshow/DSVD_extern.h"
 #include "timeout_sem.h"
+#include "defaults.h"
 
 struct vd_struct {
   union {
@@ -128,7 +129,8 @@ void *get_shared_mem(char *id, int memsize)
 
 int main(int argc, char *argv[])
 {
-  int width, height, memsize, ret = 0, port = 0;
+  int memsize, ret = 0, port = 0;
+  uint32_t width = 0, height = 0;
   int pagecount = 0, pagesize;
   void *mem;
   char *buffer = NULL;
@@ -159,10 +161,10 @@ int main(int argc, char *argv[])
   };
 
   char *id = NULL, *codec = NULL;
-  DS_GUID guid;
+  DS_GUID guid = {0, 0, 0, {0, 0, 0, 0, 0, 0, 0 ,0}};
   BITMAPINFOHEADER bih, *bih_ptr = &bih;
-  uint32_t fourcc = 0, fmt = 0;
-  int bits = 0, ppid = 0;
+  uint32_t fourcc = 0, fmt = 0, bits = 0;
+  int ppid = 0;
   void *base = NULL;
 
   while(1) {
@@ -216,14 +218,27 @@ int main(int argc, char *argv[])
         break;
     }
   }
-  if(width*height == 0) {
-    printf("Must specify size\n");
-    exit(1);
-  }
   if(!id) {
     printf("No id specified, assuming test mode\n");
+    if(width == 0)
+      get_default(codec, PARAM_WIDTH, &width);
+    if(height == 0)
+      get_default(codec, PARAM_HEIGHT, &height);
+    if(fourcc == 0)
+      get_default(codec, PARAM_FOURCC, &fourcc);
+    if(fmt == 0)
+      get_default(codec, PARAM_OUTFMT, &fmt);
+    if(bits == 0)
+      get_default(codec, PARAM_OUTBITS, &bits);
+    if(guid.f1 == 0)
+      get_default(codec, PARAM_GUID, &guid);
+      
     make_bih(&bih, width, height, fourcc);
   } else {
+    if(width*height == 0) {
+      printf("Must specify size\n");
+      exit(1);
+    }
     pagesize = (width * height * bits / 8 + SAFETY_SIZE);
     memsize = sizeof(struct vd_struct) + width * height + 
               width * height * bits / 8 + pagesize * pagecount;

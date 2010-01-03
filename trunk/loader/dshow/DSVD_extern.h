@@ -70,6 +70,7 @@ int DS_VideoDecoder_SetDirection(DS_VideoDecoder *dsvd, int d);
 int DS_VideoDecoder_GetValue(DS_VideoDecoder *dsvd, const char* name, int* value);
 int DS_VideoDecoder_SetValue(DS_VideoDecoder *dsvd, const char* name, int value);
 int DS_SetAttr_DivX(char* attribute, int value);
+void DS_VideoDecoder_ShowProperties(DS_VideoDecoder *this);
 
 // registry functions
 /*
