@@ -247,8 +247,8 @@ Index: libmpcodecs/vd_dshowserver.c
 +      memcpy(ds_mpi->data, sh->bih, sh->bih->biSize);
 +    }
 +
-+    //ds_mpi->sem = timed_seminit(DS_SOCKET, &port, 1);
-+    ds_mpi->sem = timed_seminit(DS_SEMAPHORE, id, 1);
++    ds_mpi->sem = timed_seminit(DS_SOCKET, &port, 1);
++    //ds_mpi->sem = timed_seminit(DS_SEMAPHORE, id, 1);
 +
 +    snprintf(cmd, 255, "dshowserver --codec %s --size %dx%d "
 +             "--guid %08x-%04x-%04x-%02x%02x%02x%02x%02x%02x%02x%02x "

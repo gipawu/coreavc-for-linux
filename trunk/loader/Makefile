@@ -4,7 +4,7 @@ include ../config.mak
 
 ifdef X_COMPILE
   WIN32_EMULATION = no
-  SHARED_MEM = no
+#  SHARED_MEM = no
 else
   ifdef WINELIB
     WIN32_EMULATION = no

@@ -34,11 +34,14 @@ LIBS += $(EXTRA_LIBS)
 
 all: $(OBJDIR) dshowserver $(REGISTERCODEC)
 
-dshowserver: $(OBJDIR)/server.o $(OBJDIR)/timeout_sem.o $(OBJDIR)/libloader.a
+dshowserver: $(OBJDIR)/server.o $(OBJDIR)/timeout_sem.o $(OBJDIR)/crc32.o $(OBJDIR)/libloader.a
 	$(CC) $(STATICBUILD) -o $@ $^ $(LIBS)
 ifdef X_COMPILE
 	mv $@ $@.exe
-	ln -s $@.exe $@
+	echo "#!/bin/sh" > $@
+	echo "echo 'Starting wine dshowserver.exe'" >> $@
+	echo 'wine ./dshowserver.exe $$*' >> $@
+	chmod +x dshowserver
 endif
 
 registercodec: ../loader/modify_reg.c ../loader/registry.c

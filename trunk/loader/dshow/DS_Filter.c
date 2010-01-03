@@ -13,10 +13,7 @@
 #include <stdlib.h>
 #include "win32.h" // printf macro
 
-#ifdef USE_SHARED_MEM
-#include <pthread.h>
-static pthread_mutex_t page_mutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
+static HANDLE page_mutex;
 typedef long STDCALL (*GETCLASS) (const GUID*, const GUID*, void**);
 
 #ifndef WIN32_LOADER
@@ -110,7 +107,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
     SampleProcUserFrame* pFrame;
     Debug printf("CopySample called(%p,%p)\n",pSample,pUserData);
 #ifdef USE_SHARED_MEM
-    pthread_mutex_lock(&page_mutex);
+    WaitForSingleObject(page_mutex, INFINITE);
     for(i = pData->lastFrame; 1;) {
       int j = (pData->lastFrame + 1) % PD_MAX_FRAMES;
       if(! pData->frame[i].state) {
@@ -121,7 +118,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
       }
       i = j;
     }
-    pthread_mutex_unlock(&page_mutex);
+    ReleaseMutex(page_mutex);
 #endif
     pFrame = &pData->frame[i];
     if(pSample->vt->GetMediaType &&
@@ -195,6 +192,11 @@ DS_Filter* DS_FilterCreate(const char* dllname, const GUID* id,
     int init = 0;
 //    char eb[250];
     const char* em = NULL;
+    page_mutex = CreateMutexA( 
+        NULL,              // default security attributes
+        FALSE,             // initially not owned
+        NULL);             // unnamed mutex
+
     MemAllocator* tempAll;
     ALLOCATOR_PROPERTIES props,props1;
     DS_Filter* This = malloc(sizeof(DS_Filter));

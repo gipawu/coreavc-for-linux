@@ -6,6 +6,7 @@
 #include "cmediasample.h"
 #include "mediatype.h"
 #include "wine/winerror.h"
+#include "win32.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -18,8 +19,7 @@
 static const int SAFETY_ACEL = 1024;
 
 #ifdef USE_SHARED_MEM
-#include <pthread.h>
-static pthread_mutex_t mem_mutex = PTHREAD_MUTEX_INITIALIZER;
+static HANDLE  mem_mutex = 0;
 struct {
     unsigned int pagecount;
     unsigned int pagesize;
@@ -31,6 +31,8 @@ struct {
 
 void set_memstruct(void *base, int count, int size)
 {
+    if(! mem_mutex)
+        mem_mutex = CreateMutexA(NULL, FALSE, NULL);
     memstruct.base = base;
     memstruct.end = (char *)base + size * count;
     memstruct.pagesize = size;
@@ -45,18 +47,18 @@ int get_memstruct_pagenum(void * __ptr)
     if(__ptr < memstruct.base || 
        __ptr > memstruct.end)
 	return -1;
-    pthread_mutex_lock(&mem_mutex);
+    WaitForSingleObject(mem_mutex, INFINITE);
     for(i=0; i < memstruct.pagecount; i++)
       if(__ptr < memstruct.used[i])
         break;
-    pthread_mutex_unlock(&mem_mutex);
+    ReleaseMutex(mem_mutex);
     return i;
 }
 static void *MALLOC (size_t __size)
 {
     int i;
     void *__ptr;
-    pthread_mutex_lock(&mem_mutex);
+    WaitForSingleObject(mem_mutex, INFINITE);
     for(i=0; i < memstruct.pagecount; i++)
 	if(memstruct.used[i] == NULL && ! memstruct.locked[i])
 	    break;
@@ -66,7 +68,7 @@ static void *MALLOC (size_t __size)
 	__ptr = (BYTE *)memstruct.base+memstruct.pagesize*i;
 	memstruct.used[i] = (BYTE *)__ptr + memstruct.pagesize;
     }
-    pthread_mutex_unlock(&mem_mutex);
+    ReleaseMutex(mem_mutex);
     return __ptr;
 }
 static void *REALLOC (void *__ptr, size_t __size)
@@ -75,7 +77,7 @@ static void *REALLOC (void *__ptr, size_t __size)
     if(__ptr < memstruct.base || 
        __ptr > memstruct.end)
 	return realloc(__ptr, __size);
-    pthread_mutex_lock(&mem_mutex);
+    WaitForSingleObject(mem_mutex, INFINITE);
     for(i=0; i < memstruct.pagecount; i++)
 	if(__ptr < memstruct.used[i])
 	    break;
@@ -83,7 +85,7 @@ static void *REALLOC (void *__ptr, size_t __size)
 	memstruct.used[i] = NULL;
 	__ptr = malloc(__size);
     }
-    pthread_mutex_unlock(&mem_mutex);
+    ReleaseMutex(mem_mutex);
     return __ptr;
 }
 static void FREE(void *__ptr)
@@ -94,12 +96,12 @@ static void FREE(void *__ptr)
 	free(__ptr);
 	return;
     }
-    pthread_mutex_lock(&mem_mutex);
+    WaitForSingleObject(mem_mutex, INFINITE);
     for(i=0; i < memstruct.pagecount; i++)
 	if(__ptr < memstruct.used[i])
 	    break;
     memstruct.used[i] = NULL;
-    pthread_mutex_unlock(&mem_mutex);
+    ReleaseMutex(mem_mutex);
 }
 void memstruct_setlock(void * __ptr, unsigned char value)
 {
@@ -107,11 +109,11 @@ void memstruct_setlock(void * __ptr, unsigned char value)
     if(__ptr < memstruct.base || 
        __ptr > memstruct.end)
 	return;
-    pthread_mutex_lock(&mem_mutex);
+    WaitForSingleObject(mem_mutex, INFINITE);
     for(i=0; i < memstruct.pagecount; i++)
       if(__ptr < memstruct.used[i])
         memstruct.locked[i] = value;
-    pthread_mutex_unlock(&mem_mutex);
+    ReleaseMutex(mem_mutex);
 }
     
 #else
