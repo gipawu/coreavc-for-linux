@@ -42,6 +42,8 @@ enum {
   #include "dump_frames.c"
 #endif
 
+extern unsigned long crc32(unsigned char *pData, unsigned long uSize);
+
 unsigned int print_verbose_messages = 0;
 
 void make_bih(BITMAPINFOHEADER *bih, uint32_t w, uint32_t h, uint32_t tag) {
@@ -136,6 +138,8 @@ int main(int argc, char *argv[])
   int opt;
   char c;
   void *sem;
+  int cksum = 0;
+
   static struct option Long_Options[] = {
     {"bits", 1, 0, 'b'},
     {"codec", 1, 0, 'c'},
@@ -143,6 +147,7 @@ int main(int argc, char *argv[])
     {"fourcc", 1, 0, 'f'},
     {"guid", 1, 0, 'g'},
     {"id", 1, 0, 'i'},
+    {"checksum", 0, 0, 'k'},
     {"numpages", 1, 0, 'n'},
     {"outfmt", 1, 0, 'o'},
     {"pid", 1, 0, 'p'},
@@ -190,6 +195,9 @@ int main(int argc, char *argv[])
       case 'b':
         bits = strtol(optarg, NULL, 0);
         break;
+      case 'k':
+        cksum = 1;
+        break;
       case 'n':
         pagecount = strtol(optarg, NULL, 0);
         break;
@@ -230,6 +238,9 @@ int main(int argc, char *argv[])
       make_bih(&bih, width, height, fourcc);
   }
   printf("Opening device (port is %d)\n", port);
+  if(cksum) {
+    printf("Checksum BIH: %08lx\n", crc32((char *)bih_ptr, bih_ptr->biSize));
+  }
   dshowdec = DS_VideoDecoder_Open(codec, &guid, bih_ptr, 0, 0);
   if(! dshowdec) {
     fprintf(stderr, "Failed to open win32 codec %s\n", codec);
@@ -282,6 +293,10 @@ int main(int argc, char *argv[])
         DS_VideoDecoder_Destroy(dshowdec);
         exit(0);
       case VD_DECODE:
+	if(cksum) {
+		printf("Checksum: %lld:", vd->pts);
+		printf(" %lx\n", crc32(buffer, vd->buflen));
+        }
         DS_VideoDecoder_FreeFrame(dshowdec);
         DS_VideoDecoder_SetPTS(dshowdec, vd->pts);
         vd->ret = DS_VideoDecoder_DecodeInternal(dshowdec, buffer, vd->buflen, 0, picture);

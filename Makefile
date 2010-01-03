@@ -1,7 +1,7 @@
 all: dshowserver/dshowserver
 
 dshowserver/dshowserver:
-	cd loader && $(MAKE)
+	#cd loader && $(MAKE)
 	cd dshowserver && $(MAKE)
 
 clean:
