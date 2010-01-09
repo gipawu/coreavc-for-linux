@@ -1,7 +1,7 @@
-diff -r 66e1654718fb src/libxinevdec/Makefile.am
---- a/src/libxinevdec/Makefile.am	Mon Apr 14 22:38:03 2008 +0200
-+++ b/src/libxinevdec/Makefile.am	Sat Jun 07 07:17:27 2008 -0700
-@@ -22,7 +22,8 @@ xineplug_LTLIBRARIES = $(image_module) \
+diff -r c067103b26b6 src/libxinevdec/Makefile.am
+--- a/src/libxinevdec/Makefile.am	Wed Jan 06 14:44:22 2010 +0200
++++ b/src/libxinevdec/Makefile.am	Sat Jan 09 12:29:52 2010 -0800
+@@ -23,7 +23,8 @@ xineplug_LTLIBRARIES = $(image_module) \
  	$(theora_module) \
  	xineplug_decode_bitplane.la \
  	xineplug_decode_rgb.la \
@@ -11,17 +11,17 @@ diff -r 66e1654718fb src/libxinevdec/Makefile.am
  
  xineplug_decode_bitplane_la_SOURCES = bitplane.c
  xineplug_decode_bitplane_la_LIBADD = $(XINE_LIB) $(LTLIBINTL)
-@@ -44,3 +45,6 @@ xineplug_decode_theora_la_SOURCES = xine
+@@ -45,3 +46,6 @@ xineplug_decode_theora_la_SOURCES = xine
  xineplug_decode_theora_la_SOURCES = xine_theora_decoder.c
  xineplug_decode_theora_la_CFLAGS = $(AM_CFLAGS) $(OGG_CFLAGS) $(THEORA_CFLAGS)
- xineplug_decode_theora_la_LIBADD = $(XINE_LIB) $(OGG_LIBS) $(THEORA_LIBS)
+ xineplug_decode_theora_la_LIBADD = $(XINE_LIB) $(OGG_LIBS) $(THEORA_LIBS) $(LTLIBINTL)
 +
 +xineplug_decode_dshowserver_la_SOURCES = dshowserver.c nal_parser.c
 +xineplug_decode_dshowserver_la_LIBADD = $(XINE_LIB) -lrt -lpthread
-diff -r 66e1654718fb src/libxinevdec/dshowserver.c
+diff -r c067103b26b6 src/libxinevdec/dshowserver.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/dshowserver.c	Sat Jun 07 07:17:27 2008 -0700
-@@ -0,0 +1,426 @@
++++ b/src/libxinevdec/dshowserver.c	Sat Jan 09 12:29:52 2010 -0800
+@@ -0,0 +1,423 @@
 +/*
 + * Copyright (C) 2008 Alan Nisota
 + *
@@ -85,6 +85,8 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +  VD_VERSION_MASK = 0xFFFF,
 +};
 +
++#include "timeout_sem.c"
++
 +typedef struct {
 +    int fd;
 +    void *mem;
@@ -93,8 +95,7 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +    char *pagestart;
 +    int picsize;
 +    int pagesize;
-+    sem_t *sem_rd;
-+    sem_t *sem_wr;
++    void *sem;
 +    struct vd_struct *vd;
 +} ds_mpi_t;
 +
@@ -131,13 +132,6 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +  struct nal_parser *parser;     /* Parser for H264 */
 +
 +} dshowserver_decoder_t;
-+
-+static int sem_twait(sem_t *sem, int t) {
-+    struct timespec ts;
-+    clock_gettime(CLOCK_REALTIME, &ts);
-+    ts.tv_sec += t;
-+    return(sem_timedwait(sem, &ts));
-+}
 +
 +static void make_bih(dshowserver_decoder_t *this)
 +{
@@ -255,17 +249,12 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +    if(! this->decoder_initialized) {
 +      //delay initialization until 1st frame in case extradata comes.
 +      int memsize                         = 0;
-+      char cmd[255], shm[80], sem1[80], sem2[80];
++      char cmd[255], shm[80];
++      int port = 0;
 +
 +      this->decoder_initialized = 1;
-+      snprintf(cmd, 255, "dshowserver -c CoreAVCDecoder.ax -s %dx%d "
-+               "-g 09571a4b-f1fe-4c60-9760de6d310c7c31 "
-+               "-f 0x%08x -b %d -o 0x%08x -p %d -i %x -n %d %s&",
-+               this->width, this->height,
-+               this->compression, this->bpp, XINE_IMGFMT_YUY2, getpid(), *(int *)pthread_self(), this->numpages, "");
 +      snprintf(shm, 80, "/dshow_shm.%x", *(int *)pthread_self());
-+      snprintf(sem1, 80, "/dshow_sem1.%x", *(int *)pthread_self());
-+      snprintf(sem2, 80, "/dshow_sem2.%x", *(int *)pthread_self());
++
 +      this->ds_mpi.fd = shm_open(shm, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
 +      this->ds_mpi.picsize =  this->width * this->height * this->bpp / 8;
 +      this->ds_mpi.pagesize = this->ds_mpi.picsize + 1024;
@@ -290,14 +279,20 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +        this->ds_mpi.vd->cmd |= VD_HAS_BIH; //Use embedded bih
 +        memcpy(this->ds_mpi.data, this->bih, this->bih->biSize);
 +      }
-+      //Create read/write semaphores in locked state
-+      this->ds_mpi.sem_wr = sem_open(sem1, O_CREAT, 0644, 0);
-+      this->ds_mpi.sem_rd = sem_open(sem2, O_CREAT, 0644, 0);
++
++      this->ds_mpi.sem = timed_seminit(DS_SOCKET, &port, 1);
++      //this->ds_mpi.sem = timed_seminit(DS_SEMAPHORE, &port, 1);
++
++      snprintf(cmd, 255, "dshowserver --codec CoreAVCDecoder.ax --size %dx%d "
++               "--guid 09571a4b-f1fe-4c60-9760de6d310c7c31 "
++               "--fourc 0x%08x --bits %d --outfmt 0x%08x --pid %d --id %x "
++               "--numpages %d --port %d %s&",
++               this->width, this->height,
++               this->compression, this->bpp, XINE_IMGFMT_YUY2, getpid(),
++               *(int *)pthread_self(), this->numpages, port, "");
 +      system(cmd);
-+      ret = sem_twait(this->ds_mpi.sem_rd, 10);
++      ret = timed_semwait(this->ds_mpi.sem, 10);
 +      shm_unlink(shm);
-+      sem_unlink(sem1);
-+      sem_unlink(sem2);
 +      if(ret != 0) {
 +        printf("DirectShow filter failed");
 +        return;
@@ -305,9 +300,12 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +      printf("Found DirectShow filter");
 +    }
 +
-+    if( (int) buf->size <= 0 )
++/*
++    if( (int) buf->size < 0 ||
++        ( (int) buf->size == 0 &&
++          (! (buf->decoder_flags & BUF_FLAG_FRAME_END) ) ) )
 +        return;
-+       
++*/       
 +    if( this->stream_id < 0 )
 +       this->stream_id = buf->type & 0xff;
 +    
@@ -322,8 +320,8 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +    this->ds_mpi.vd->pts = buf->pts;
 +    this->ds_mpi.vd->buflen = this->size;
 +    this->size = 0;
-+    sem_post(this->ds_mpi.sem_wr);
-+    ret = sem_twait(this->ds_mpi.sem_rd, 10);
++    timed_sempost(this->ds_mpi.sem);
++    ret = timed_semwait(this->ds_mpi.sem, 10);
 +    lprintf("ret: %d/%d PTS: %lld -> %lld\n", ret, this->ds_mpi.vd->ret, buf->pts, this->ds_mpi.vd->pts);
 +    //printf("PTS (%d): %f(%d) -> %d\n", this->ds_mpi.vd->ret, sh->buffered_pts[0], pts-1, this->ds_mpi.vd->pts);
 +    if(ret == 0 && this->ds_mpi.vd->ret && ! (this->ds_mpi.vd->ret & (1<<31))) {
@@ -365,8 +363,8 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +  xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG, "dshowserver: called reset\n");
 +  if(this->decoder_initialized) {
 +    this->ds_mpi.vd->cmd = VD_SEEK; //'3' is cmd for seek
-+    sem_post(this->ds_mpi.sem_wr);
-+    sem_twait(this->ds_mpi.sem_rd, 10);
++    timed_sempost(this->ds_mpi.sem);
++    timed_semwait(this->ds_mpi.sem, 10);
 +  }
 +  xprintf (this->stream->xine, XINE_VERBOSITY_DEBUG, "dshowserver: reset done\n");
 +}
@@ -380,10 +378,9 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +    this->decoder_ok = 0;
 +    this->stream->video_out->close(this->stream->video_out, this->stream);
 +    this->ds_mpi.vd->cmd = VD_END; //'1' is cmd for terminating
-+    sem_post(this->ds_mpi.sem_wr);
++    timed_sempost(this->ds_mpi.sem);
 +    close(this->ds_mpi.fd);
-+    sem_close(this->ds_mpi.sem_wr);
-+    sem_close(this->ds_mpi.sem_rd);
++    timed_semdelete(this->ds_mpi.sem);
 +  }
 +  if(this->parser)
 +    free_parser(this->parser);
@@ -448,9 +445,9 @@ diff -r 66e1654718fb src/libxinevdec/dshowserver.c
 +  { PLUGIN_VIDEO_DECODER, 18, "dshowserver", XINE_VERSION_CODE, &dec_info_video, init_plugin },
 +  { PLUGIN_NONE, 0, "", 0, NULL, NULL }
 +};
-diff -r 66e1654718fb src/libxinevdec/nal_parser.c
+diff -r c067103b26b6 src/libxinevdec/nal_parser.c
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.c	Sat Jun 07 07:17:27 2008 -0700
++++ b/src/libxinevdec/nal_parser.c	Sat Jan 09 12:29:52 2010 -0800
 @@ -0,0 +1,520 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -769,7 +766,7 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +
 +/* ----------------- NAL parser ----------------- */
 +
-+struct nal_parser* init_parser()
++struct nal_parser* init_parser(void)
 +{
 +    struct nal_parser *parser = malloc(sizeof(struct nal_parser));
 +    memset(parser->buf, 0x00, MAX_FRAME_SIZE);
@@ -972,9 +969,9 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.c
 +    
 +    return -1;
 +}
-diff -r 66e1654718fb src/libxinevdec/nal_parser.h
+diff -r c067103b26b6 src/libxinevdec/nal_parser.h
 --- /dev/null	Thu Jan 01 00:00:00 1970 +0000
-+++ b/src/libxinevdec/nal_parser.h	Sat Jun 07 07:17:27 2008 -0700
++++ b/src/libxinevdec/nal_parser.h	Sat Jan 09 12:29:52 2010 -0800
 @@ -0,0 +1,141 @@
 +#ifndef NAL_PARSER_H_
 +#define NAL_PARSER_H_
@@ -1111,9 +1108,424 @@ diff -r 66e1654718fb src/libxinevdec/nal_parser.h
 +
 +int seek_for_nal(uint8_t *buf, int buf_len);
 +
-+struct nal_parser* init_parser();
++struct nal_parser* init_parser(void);
 +void free_parser(struct nal_parser *parser);
 +int parse_frame(struct nal_parser *parser, uint8_t *inbuf, int inbuf_len,
 +                uint8_t **ret_buf, int *ret_len);
 +
 +#endif
+diff -r c067103b26b6 src/libxinevdec/timeout_sem.c
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/libxinevdec/timeout_sem.c	Sat Jan 09 12:29:52 2010 -0800
+@@ -0,0 +1,397 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <fcntl.h>
++#include <errno.h>
++#include <string.h>
++
++#ifndef __MINGW32__
++  #include <netdb.h>
++  #include <netinet/in.h>
++  #include <sys/socket.h>
++  #include <arpa/inet.h>
++  #include <sys/wait.h>
++
++  #define DS_EINPROGRESS EINPROGRESS
++  #define DS_ETIMEDOUT   ETIMEDOUT
++  #define DS_EWOULDBLOCK EWOULDBLOCK
++#else
++  #define _WIN32_WINNT 0x0501
++  #include <windows.h>
++  #include <winsock2.h>
++  #include <ws2tcpip.h>
++
++  #define DS_EINPROGRESS WSAEINPROGRESS
++  #define DS_ETIMEDOUT   WSAETIMEDOUT
++  #define DS_EWOULDBLOCK WSAEWOULDBLOCK
++#endif
++
++#include "timeout_sem.h"
++#ifdef __MINGW32__
++  #undef DS_SEMAPHORE
++#endif
++
++#ifdef DS_SEMAPHORE
++#include <time.h>
++#include <semaphore.h>
++#endif
++
++struct sem {
++  int type;
++  int initialized;
++  int sockfd;
++  int listenfd;
++  void *id;
++  char mutex_rx[1];
++  char mutex_tx[1];
++#ifdef DS_SEMAPHORE
++  sem_t *sem_rd;
++  sem_t *sem_wr;
++#endif /*DS_SEMAPHORE*/
++};
++
++#ifdef DS_SEMAPHORE
++#ifdef __APPLE__
++  void ALRMhandler(int sig) {
++  }
++  static int sem_twait(sem_t *sem, int t) {
++    int ret;
++    alarm(t);
++    ret = sem_wait(sem);
++    printf("twait complete\n");
++    return ret;
++  }
++  static void init_twait() {
++    sigset_t none;
++    struct sigaction sa;
++    sigemptyset(&none);
++    sigprocmask(SIG_SETMASK, &none, 0);
++
++    sa.sa_handler = ALRMhandler;
++    sa.sa_flags = 0;
++    sigemptyset(&sa.sa_mask);
++    sigaction(SIGALRM, &sa, 0);
++  }
++#else
++  static int sem_twait(sem_t *sem, int t) {
++    struct timespec ts;
++    clock_gettime(CLOCK_REALTIME, &ts);
++    ts.tv_sec += t;
++    return(sem_timedwait(sem, &ts));
++  }
++  static void init_twait() {}
++#endif
++#endif /*DS_SEMAPHORE */
++
++static int setblocking(int sock, int block)
++{
++	unsigned long opts;
++#ifndef __MINGW32__
++	opts = fcntl(sock,F_GETFL);
++	if (opts < 0) {
++		perror("fcntl(F_GETFL)");
++		exit(EXIT_FAILURE);
++	}
++	opts = block ? (opts & ~O_NONBLOCK)
++                     : (opts | O_NONBLOCK);
++	if (fcntl(sock,F_SETFL,opts) < 0) {
++		perror("fcntl(F_SETFL)");
++		exit(EXIT_FAILURE);
++	}
++#else
++	opts = !(block);
++	if ( ioctlsocket( sock, FIONBIO, &opts ) == SOCKET_ERROR )
++	{
++		perror("ioctlsocket");
++		exit(EXIT_FAILURE);
++	}
++#endif
++	return 0;
++}
++
++static int timed_connect(int sockfd, const struct sockaddr *serv_addr,
++                   socklen_t addrlen, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++  int valopt;
++  socklen_t lon;
++
++  // Trying to connect with timeout
++  res = connect(sockfd, serv_addr, addrlen);
++  if (res < 0 ) {
++     if (errno == DS_EINPROGRESS || errno == DS_EWOULDBLOCK || errno == 0) {
++        fprintf(stderr, "EINPROGRESS in connect() - selecting\n");
++        do {
++           tv.tv_sec = secs;
++           tv.tv_usec = 0;
++           FD_ZERO(&myset);
++           FD_SET(sockfd, &myset);
++           res = select(sockfd+1, NULL, &myset, &myset, &tv);
++           if (res < 0 && errno != EINTR) {
++              fprintf(stderr, "Error connecting (select) %d - %s\n", errno, strerror(errno));
++              return -1;
++           }
++           else if (res > 0) {
++              // Socket selected for write
++              lon = sizeof(int);
++              if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void*)(&valopt), &lon) < 0) {
++                 fprintf(stderr, "Error in getsockopt() %d - %s\n", errno, strerror(errno));
++                 return -1;
++              }
++              // Check the value returned...
++              if (valopt) {
++                 fprintf(stderr, "Error in delayed connection() %d - %s\n", valopt, strerror(valopt)
++);
++                 return -1;
++              }
++              break;
++           }
++           else {
++              fprintf(stderr, "Timeout in select() - Cancelling!\n");
++              return -1;
++           }
++        } while (1);
++     }
++     else {
++        fprintf(stderr, "Error connecting (connect) %d - %s\n", errno, strerror(errno));
++        return -1;
++     }
++  }
++  // I hope that is all
++  return 0;
++}
++static int timed_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++
++  tv.tv_sec = secs;
++  tv.tv_usec = 0;
++  FD_ZERO(&myset);
++  FD_SET(sockfd, &myset);
++  res = select(sockfd+1, &myset, NULL, NULL, &tv);
++  if (res < 0 && errno != EINTR) {
++    fprintf(stderr, "Error accepting %d - %s\n", errno, strerror(errno));
++    return -1;
++  }
++  else if (res > 0) {
++    // Socket selected for read
++    return accept(sockfd, NULL, NULL);
++  }
++  errno = DS_ETIMEDOUT;
++  return -1;
++}
++static int timed_recv(int sockfd, void *buf, size_t len, int flags, int secs) {
++  //Socket should already be non-blocking
++  int res;
++  fd_set myset;
++  struct timeval tv;
++
++  tv.tv_sec = secs;
++  tv.tv_usec = 0;
++  FD_ZERO(&myset);
++  FD_SET(sockfd, &myset);
++  res = select(sockfd+1, &myset, NULL, NULL, &tv);
++  if (res < 0 && errno != EINTR) {
++    fprintf(stderr, "Error accepting %d - %s\n", errno, strerror(errno));
++    return -1;
++  }
++  else if (res > 0) {
++    // Socket selected for read
++    return recv(sockfd, buf, len, flags);
++  }
++  errno = DS_ETIMEDOUT;
++  return -1;
++}
++
++static int timed_sockinit(int *port, int is_server)
++{
++    int sockfd;  // listen on sock_fd
++    struct sockaddr_in my_addr;
++    socklen_t peer_addr_size = sizeof(struct sockaddr_in);
++    int yes=1;
++
++#ifdef __MINGW32__
++    WSADATA wsaData;
++    if(WSAStartup(MAKEWORD(2, 2), &wsaData) !=0) {
++      printf("WSAStartup failed\n");
++      exit(1);
++    }
++#endif
++
++    memset(&my_addr, 0, sizeof(my_addr));
++    my_addr.sin_family = AF_INET;
++    my_addr.sin_addr.s_addr=INADDR_ANY;
++    my_addr.sin_port = *port;
++    if ((sockfd = socket(PF_INET, SOCK_STREAM, 0)) == -1) {
++            perror("server: socket");
++            exit(1);
++    }
++
++    setblocking(sockfd, 0);
++    if (is_server) {
++      if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char *)&yes,
++              sizeof(int)) == -1) {
++        perror("setsockopt");
++        exit(1);
++      }
++
++      if (bind(sockfd, (void *) &my_addr,  sizeof(struct sockaddr_in)) == -1) {
++              close(sockfd);
++              perror("server: bind");
++              exit(1);
++      }
++      if (listen(sockfd, 1) == -1) {
++        perror("listen");
++        exit(1);
++      }
++      if (getsockname(sockfd, (void *)&my_addr, &peer_addr_size) == -1) {
++        perror("getsockname");
++        exit(1);
++      }
++      if(my_addr.sin_port == 0) {
++        printf("Failed to get port\n");
++        exit(1);
++      }
++      *port = my_addr.sin_port;
++    } else {
++      if (timed_connect(sockfd, (void *) &my_addr,  sizeof(struct sockaddr_in), 10) == -1)
++      {
++        close(sockfd);
++        perror("client: connect");
++        exit(1);
++      }
++    }
++
++    return sockfd;
++}
++
++int timed_semwait(void *_sem, int secs) {
++  struct sem *sem = (struct sem *)_sem;
++  int ok = -1;
++  if(sem->type == DS_SOCKET) {
++    if(! sem->initialized) {
++      ok = timed_accept(sem->sockfd, NULL, NULL, secs);
++      if(ok != -1) {
++        sem->listenfd = sem->sockfd;
++        sem->sockfd = ok;
++        ok = 1;
++        sem->initialized = 1;
++      }
++    } else {
++      ok = (timed_recv(sem->sockfd, sem->mutex_rx, 1, 0, secs) == 1);
++    }
++  }
++#ifdef DS_SEMAPHORE
++  else if(sem->type == DS_SEMAPHORE) {
++    ok = (sem_twait(sem->sem_rd, secs) == 0);
++    if(! sem->initialized) {
++      timed_semclean(sem);
++      sem->initialized = 1;
++    }
++  }
++#endif
++  if(!ok && errno == DS_ETIMEDOUT) {
++    ok = DS_TIMEOUT;
++  }
++  return ok;
++}
++
++void timed_sempost(void *_sem) {
++  struct sem *sem = (struct sem *)_sem;
++  if(sem->type == DS_SOCKET) {
++    send(sem->sockfd, sem->mutex_tx, 1, 0);
++  }
++#ifdef DS_SEMAPHORE
++  else if(sem->type == DS_SEMAPHORE) {
++    sem_post(sem->sem_wr);
++  }
++#endif
++}
++
++void timed_semclean(void * _sem) {
++#ifdef DS_SEMAPHORE
++  struct sem *sem = (struct sem *) _sem;
++  if(sem->type == DS_SEMAPHORE) {
++    char sem1[80], sem2[80];
++    snprintf(sem1, 80, "/dshow_sem1.%s", (char *)sem->id);
++    snprintf(sem2, 80, "/dshow_sem2.%s", (char *)sem->id);
++    sem_unlink(sem1);
++    sem_unlink(sem2);
++  }
++#endif
++}
++
++void *timed_seminit(unsigned int semtype, void *id, int is_host) {
++  struct sem *sem;
++  sem = (struct sem *)malloc(sizeof(struct sem));
++  memset(sem, 0, sizeof(struct sem));
++  sem->type = semtype;
++  sem->id = id;
++  sem->initialized = !(is_host);
++  if(semtype == DS_SOCKET) {
++    sem->listenfd = -1;
++    sem->sockfd = timed_sockinit((int *)id, is_host);
++    if(sem->sockfd == -1) {
++      perror("sock_init");
++      exit(1);
++    }
++  }
++#ifdef DS_SEMAPHORE
++  else if(semtype == DS_SEMAPHORE) {
++    char semrd[80], semwr[80];
++    init_twait();
++    snprintf(semrd, 80, "/dshow_sem%d.%s", is_host ? 2 : 1, (char *)id);
++    snprintf(semwr, 80, "/dshow_sem%d.%s", is_host ? 1 : 2, (char *)id);
++    if(is_host) {
++      sem->sem_rd = sem_open(semrd, O_CREAT, 0644, 0);
++      sem->sem_wr = sem_open(semwr, O_CREAT, 0644, 0);
++    } else {
++      sem->sem_rd = sem_open(semrd, 0);
++      sem->sem_wr = sem_open(semwr, 0);
++      sem_unlink(semwr);
++      sem_unlink(semrd);
++    }
++    if(sem->sem_rd == SEM_FAILED) {
++      timed_semclean(sem);
++      perror("sem_open(1)");
++      exit(1);
++    }
++    if(sem->sem_wr == SEM_FAILED) {
++      timed_semclean(sem);
++      perror("sem_open(2)");
++      exit(1);
++    }
++    //tell calling procedure that we are awake;
++    if(! is_host) {
++      sem_post(sem->sem_wr);
++    }
++  }
++#endif /*DS_SEMAPHORE*/
++  else {
++    fprintf(stderr, "Unknown type specified: %d\n", semtype);
++    exit(1);
++  }
++  return sem;
++}
++
++void timed_semdelete(void *_sem) {
++  struct sem *sem = (struct sem *) _sem;
++  if(sem->type == DS_SOCKET) {
++    close(sem->sockfd);
++    if(sem->listenfd != -1)
++      close(sem->listenfd);
++#ifdef DS_SEMAPHORE
++  } else if(sem->type == DS_SEMAPHORE) {
++    if(! sem->initialized)
++      timed_semclean(sem);
++    sem_close(sem->sem_wr);
++    sem_close(sem->sem_rd);
++#endif
++  }
++  free(sem);
++}
++
+diff -r c067103b26b6 src/libxinevdec/timeout_sem.h
+--- /dev/null	Thu Jan 01 00:00:00 1970 +0000
++++ b/src/libxinevdec/timeout_sem.h	Sat Jan 09 12:29:52 2010 -0800
+@@ -0,0 +1,10 @@
++#define DS_SOCKET 0x01
++#define DS_SEMAPHORE 0x02
++
++#define DS_TIMEOUT -1
++
++void *timed_seminit(unsigned int semtype, void *id, int is_host);
++void timed_semclean(void *_sem);
++void timed_sempost(void *_sem);
++int timed_semwait(void *_sem, int secs);
++void timed_semdelete(void *_sem);
