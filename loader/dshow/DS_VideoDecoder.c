@@ -98,6 +98,7 @@ DWORD avc_quant(BYTE *src, BYTE *dst, int len)
 }
 #define is_avc(cc) (cc == mmioFOURCC('A', 'V', 'C', '1') || \
                     cc == mmioFOURCC('a', 'v', 'c', '1'))
+
 char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
 {
     struct VIDEOINFOHEADER2 {
@@ -128,6 +129,8 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
         DWORD               dwSequenceHeader[1];
     } *mp2vi;
     int extra = 0;
+    BYTE *extradata;
+    BYTE nalu_length_field_size;
     if(vih->bmiHeader.biSize > sizeof(BITMAPINFOHEADER)) {
       extra = vih->bmiHeader.biSize-sizeof(BITMAPINFOHEADER);
     }
@@ -144,7 +147,11 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
     mp2vi->hdr.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
     if(extra) {
       if(is_avc(vih->bmiHeader.biCompression)) {
-        mp2vi->dwFlags = 4; //What does this mean?
+        extradata=(BYTE*)(&vih->bmiHeader + 1);
+        nalu_length_field_size=(*(extradata + 4 ) & 0x3) + 1;
+        Debug printf("[dshowserver] NALU length field size: %d\n", nalu_length_field_size);
+
+        mp2vi->dwFlags = nalu_length_field_size; //What does this mean?
         mp2vi->cbSequenceHeader = avc_quant(
                           (BYTE *)(&vih->bmiHeader) + sizeof(BITMAPINFOHEADER),
                           (BYTE *)(&mp2vi->dwSequenceHeader[0]), extra);
