@@ -21,7 +21,7 @@ ifdef X_COMPILE
   LIBS += -lole32 -loleaut32 -luser32 -lws2_32
 else
   ifdef WINELIB
-    LIBS += -lole32 -loleaut32 -lrt -lpthread
+    LIBS += -m32 -lole32 -loleaut32 -lrt -lpthread
   else
     LIBS += -lpthread -lrt
     REGISTERCODEC = registercodec
