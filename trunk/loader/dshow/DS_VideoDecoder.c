@@ -151,6 +151,8 @@ char *ConvertVIHtoMPEG2VI(VIDEOINFOHEADER *vih, int *size)
         nalu_length_field_size=(*(extradata + 4 ) & 0x3) + 1;
         Debug printf("[dshowserver] NALU length field size: %d\n", nalu_length_field_size);
 
+        mp2vi->dwProfile = *(extradata+1);
+        mp2vi->dwLevel = *(extradata+3);
         mp2vi->dwFlags = nalu_length_field_size; //What does this mean?
         mp2vi->cbSequenceHeader = avc_quant(
                           (BYTE *)(&vih->bmiHeader) + sizeof(BITMAPINFOHEADER),

@@ -521,7 +521,7 @@ static HRESULT STDCALL CMediaSample_IsDiscontinuity(IMediaSample * This)
 {
     Debug printf("CMediaSample_IsDiscontinuity(%p) called => %d\n", This,
                  ((CMediaSample*) This)->isDiscontinuity);
-    return ((CMediaSample*) This)->isDiscontinuity;
+    return ((CMediaSample*) This)->isDiscontinuity ? S_OK : S_FALSE;
 }
 
 /**
