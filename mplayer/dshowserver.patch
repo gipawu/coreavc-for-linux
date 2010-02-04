@@ -1,8 +1,8 @@
 Index: libmpcodecs/vd.c
 ===================================================================
---- libmpcodecs/vd.c.orig	2010-01-02 12:13:37.000000000 -0800
-+++ libmpcodecs/vd.c	2010-01-02 14:39:53.000000000 -0800
-@@ -25,6 +25,7 @@
+--- libmpcodecs/vd.c.orig	2010-01-30 13:34:02.000000000 -0800
++++ libmpcodecs/vd.c	2010-01-30 19:19:30.000000000 -0800
+@@ -43,6 +43,7 @@
  extern vd_functions_t mpcodecs_vd_ffmpeg;
  extern vd_functions_t mpcodecs_vd_theora;
  extern vd_functions_t mpcodecs_vd_dshow;
@@ -10,7 +10,7 @@ Index: libmpcodecs/vd.c
  extern vd_functions_t mpcodecs_vd_dmo;
  extern vd_functions_t mpcodecs_vd_vfw;
  extern vd_functions_t mpcodecs_vd_vfwex;
-@@ -56,6 +57,7 @@
+@@ -74,6 +75,7 @@
  #ifdef CONFIG_OGGTHEORA
  	&mpcodecs_vd_theora,
  #endif
@@ -20,8 +20,8 @@ Index: libmpcodecs/vd.c
          &mpcodecs_vd_dmo,
 Index: Makefile
 ===================================================================
---- Makefile.orig	2010-01-02 12:13:37.000000000 -0800
-+++ Makefile	2010-01-02 14:39:58.000000000 -0800
+--- Makefile.orig	2010-01-30 13:35:05.000000000 -0800
++++ Makefile	2010-01-30 19:19:30.000000000 -0800
 @@ -20,6 +20,7 @@
  # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  
@@ -30,7 +30,7 @@ Index: Makefile
  
  
  ###### variable declarations #######
-@@ -516,6 +517,7 @@
+@@ -519,6 +520,7 @@
                stream/stream_mf.c \
                stream/stream_null.c \
                stream/url.c \
@@ -38,19 +38,19 @@ Index: Makefile
                $(SRCS_COMMON-yes)
  
  
-@@ -882,6 +884,7 @@
+@@ -887,6 +889,7 @@
  libdvdnav/%:   CFLAGS := -Ilibdvdnav -D__USE_UNIX98 -D_GNU_SOURCE -DHAVE_CONFIG_H -DVERSION=\"MPlayer-custom\" $(CFLAGS)
  libdvdread4/%: CFLAGS := -Ilibdvdread4 -D__USE_UNIX98 -D_GNU_SOURCE $(CFLAGS_LIBDVDCSS_DVDREAD) $(CFLAGS)
  libfaad2/%:    CFLAGS := -Ilibfaad2 -D_GNU_SOURCE -DHAVE_CONFIG_H $(CFLAGS_FAAD_FIXED) $(CFLAGS)
 +libmpcodecs/%: CFLAGS := $(CFLAGS) -g -O0
  
- loader/%: CFLAGS += -Iloader -fno-omit-frame-pointer $(CFLAGS_NO_OMIT_LEAF_FRAME_POINTER)
+ loader/%: CFLAGS += -fno-omit-frame-pointer $(CFLAGS_NO_OMIT_LEAF_FRAME_POINTER)
  #loader/%: CFLAGS += -Ddbg_printf=__vprintf -DTRACE=__vprintf -DDETAILED_OUT
 Index: libmpcodecs/vd_dshowserver.c
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/vd_dshowserver.c	2010-01-04 08:27:15.000000000 -0800
-@@ -0,0 +1,281 @@
++++ libmpcodecs/vd_dshowserver.c	2010-02-02 22:01:18.000000000 -0800
+@@ -0,0 +1,296 @@
 +/*
 + * Copyright Alan Nisota 2006 - 2010
 + * To use this code, make sureyour codecs.conf file has been updated with this section:
@@ -207,6 +207,8 @@ Index: libmpcodecs/vd_dshowserver.c
 +    int memsize;
 +
 +    init_twait();
++    w = sh->disp_w; h = sh->disp_h;
++    if(!mpcodecs_config_vo(sh,w,h,IMGFMT_YUY2)) return 0;
 +    out_fmt = sh->codec->outfmt[sh->outfmtidx];
 +    switch(out_fmt){
 +      case IMGFMT_YUY2:
@@ -221,7 +223,6 @@ Index: libmpcodecs/vd_dshowserver.c
 +      default:
 +        bpp = 24; break;
 +    }
-+    w = sh->disp_w; h = sh->disp_h;
 +    sprintf(id, "%x", *(int *)pthread_self());
 +    snprintf(shm, 80, "/dshow_shm.%s", id);
 +
@@ -267,7 +268,6 @@ Index: libmpcodecs/vd_dshowserver.c
 +      printf("DirectShow filter failed");
 +      return 0;
 +    } else {
-+      if(!mpcodecs_config_vo(sh,w,h,IMGFMT_YUY2)) return 0;
 +      printf("Found DirectShow filter");
 +      return 1;
 +    }
@@ -292,10 +292,12 @@ Index: libmpcodecs/vd_dshowserver.c
 +static mp_image_t* decode(sh_video_t *sh,void* data,int len,int flags){
 +   mp_image_t* mpi = NULL;
 +   int ret;
++   unsigned char *t;
++
 +   if(len<=0) return NULL; // skipped frame
 +
 +   ds_mpi->vd->cmd = VD_DECODE; //'2' is cmd for decoding
-+   ds_mpi->vd->pts = (uint64_t)(sh->buffered_pts[0]*1E9);
++   ds_mpi->vd->pts = (uint64_t)(1E9* (sh->num_buffered_pts ? sh->buffered_pts[0] : sh->pts));
 +   memcpy(ds_mpi->data, data, len);
 +   if (0) {
 +      static int count = 0;
@@ -321,13 +323,26 @@ Index: libmpcodecs/vd_dshowserver.c
 +   if(ret == 1 && ds_mpi->vd->ret && ! (ds_mpi->vd->ret & (1<<31))) {
 +     if(ds_mpi->vd->pts)
 +       sh->buffered_pts[0] = (double)ds_mpi->vd->pts/1E9;
-+     mpi=mpcodecs_get_image(sh, MP_IMGTYPE_TEMP, 0 /*MP_IMGFLAG_ACCEPT_STRIDE*/,
++       mpi=mpcodecs_get_image(sh, MP_IMGTYPE_EXPORT, MP_IMGFLAG_COMMON_PLANE|MP_IMGFLAG_COMMON_STRIDE,
 +                            sh->disp_w, sh->disp_h);
 +     if(ds_mpi->vd->ret & 0x02) {
 +       unsigned char page = ds_mpi->vd->ret >> 8;
-+       memcpy(mpi->planes[0], ds_mpi->picture + ds_mpi->picsize + page * ds_mpi->pagesize, ds_mpi->picsize);
++       mpi->planes[0]=ds_mpi->picture + ds_mpi->picsize + page * ds_mpi->pagesize;
 +     } else {
-+       memcpy(mpi->planes[0], ds_mpi->picture, ds_mpi->picsize);
++       mpi->planes[0]=ds_mpi->picture;
++     }
++     if (mpi->flags&MP_IMGFLAG_PLANAR) {
++       mpi->stride[0] = mpi->width;
++       mpi->stride[1] = mpi->stride[2] = mpi->width >> mpi->chroma_x_shift;
++       mpi->planes[2] = mpi->planes[0] + mpi->stride[0] * mpi->height;
++       mpi->planes[1] = mpi->planes[2] + (mpi->width >> mpi->chroma_x_shift) * (mpi->height >> mpi->chroma_y_shift);
++       if (mpi->flags&MP_IMGFLAG_SWAPPED) {
++         t = mpi->planes[1];
++         mpi->planes[1] = mpi->planes[2];
++         mpi->planes[2] = t;
++       }
++     } else {
++       mpi->stride[0]=mpi->bpp*mpi->width/8;
 +     }
 +   }
 +   return mpi;
@@ -335,7 +350,7 @@ Index: libmpcodecs/vd_dshowserver.c
 Index: libmpcodecs/timeout_sem.c
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/timeout_sem.c	2010-01-02 12:15:00.000000000 -0800
++++ libmpcodecs/timeout_sem.c	2010-01-30 19:19:30.000000000 -0800
 @@ -0,0 +1,397 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -737,7 +752,7 @@ Index: libmpcodecs/timeout_sem.c
 Index: libmpcodecs/timeout_sem.h
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/timeout_sem.h	2010-01-02 12:14:06.000000000 -0800
++++ libmpcodecs/timeout_sem.h	2010-01-30 19:19:30.000000000 -0800
 @@ -0,0 +1,10 @@
 +#define DS_SOCKET 0x01
 +#define DS_SEMAPHORE 0x02
