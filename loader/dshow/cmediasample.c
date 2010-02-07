@@ -174,7 +174,7 @@ static long STDCALL CMediaSample_AddRef(IUnknown* This)
 {
     Debug printf("CMediaSample_AddRef(%p) called\n", This);
     ((CMediaSample*)This)->refcount++;
-    return 0;
+    return ((CMediaSample*)This)->refcount;
 }
 
 /**
@@ -217,7 +217,7 @@ static long STDCALL CMediaSample_Release(IUnknown* This)
 	parent->all->vt->ReleaseBuffer((IMemAllocator*)(parent->all),
 				       (IMediaSample*)This);
     }
-    return 0;
+    return ((CMediaSample*) This)->refcount;
 }
 
 /**
@@ -559,9 +559,9 @@ static HRESULT STDCALL CMediaSample_GetMediaTime(IMediaSample * This,
 						 /* [out] */ LONGLONG *pTimeEnd)
 {
     if (pTimeStart)
-	*pTimeStart = ((CMediaSample*) This)->time_start;
+	*pTimeStart = ((CMediaSample*) This)->m_time_start;
     if (pTimeEnd)
-	*pTimeEnd = ((CMediaSample*) This)->time_end;
+	*pTimeEnd = ((CMediaSample*) This)->m_time_end;
     Debug printf("CMediaSample_GetMediaTime(%p) called => (%lld, %lld)\n", This,
                  (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
     return 0;
@@ -588,9 +588,9 @@ static HRESULT STDCALL CMediaSample_SetMediaTime(IMediaSample * This,
     Debug printf("CMediaSample_SetMediaTime(%p, %lld, %lld) called\n", This,
                  (pTimeStart ? *pTimeStart : -1), (pTimeEnd ? *pTimeEnd : -1));
     if (pTimeStart)
-	((CMediaSample*) This)->time_start = *pTimeStart;
+	((CMediaSample*) This)->m_time_start = *pTimeStart;
     if (pTimeEnd)
-        ((CMediaSample*) This)->time_end = *pTimeEnd;
+        ((CMediaSample*) This)->m_time_end = *pTimeEnd;
     return 0;
 }
 
@@ -686,6 +686,8 @@ CMediaSample* CMediaSampleCreate(IMemAllocator* allocator, int size)
     This->isDiscontinuity = 1;
     This->time_start = 0;
     This->time_end = 0;
+    This->m_time_start = 0;
+    This->m_time_end = 0;
     This->type_valid = 0;
     This->block = This->own_block;
 
