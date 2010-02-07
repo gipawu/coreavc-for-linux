@@ -141,21 +141,33 @@ static long STDCALL CMediaSample_QueryInterface(IUnknown* This,
 						/* [in] */ const GUID* iid,
 						/* [iid_is][out] */ void **ppv)
 {
-    Debug printf("CMediaSample_QueryInterface(%p) called\n", This);
-    if (!ppv)
+    Debug printf("CMediaSample_QueryInterface(%p) called: ", This);
+    if (!ppv) {
+	Debug printf("NULL\n");
 	return E_INVALIDARG;
+    }
     if (memcmp(iid, &IID_IUnknown, sizeof(*iid)) == 0)
     {
+	Debug printf("IID_IUnknown\n");
 	*ppv = (void*)This;
 	((IMediaSample*) This)->vt->AddRef(This);
 	return 0;
     }
     if (memcmp(iid, &IID_IMediaSample, sizeof(*iid)) == 0)
     {
+	Debug printf("IID_IMediaSample\n");
 	*ppv = (void*)This;
 	((IMediaSample*) This)->vt->AddRef(This);
 	return 0;
     }
+
+    Debug printf("Unknown interface : %08x-%04x-%04x-%02x%02x-" \
+		 "%02x%02x%02x%02x%02x%02x\n",
+		 iid->f1,  iid->f2,  iid->f3,
+		 (unsigned char)iid->f4[1], (unsigned char)iid->f4[0],
+		 (unsigned char)iid->f4[2], (unsigned char)iid->f4[3],
+		 (unsigned char)iid->f4[4], (unsigned char)iid->f4[5],
+		 (unsigned char)iid->f4[6], (unsigned char)iid->f4[7]);
     return E_NOINTERFACE;
 }
 

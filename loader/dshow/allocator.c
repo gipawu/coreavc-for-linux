@@ -114,6 +114,7 @@ static inline avm_list_t* avm_list_find(avm_list_t* head, void* member)
     return NULL;
 }
 
+#ifdef WIN32_LOADER
 static long MemAllocator_CreateAllocator(GUID* clsid, const GUID* iid, void** ppv)
 {
     IMemAllocator* p;
@@ -130,6 +131,7 @@ static long MemAllocator_CreateAllocator(GUID* clsid, const GUID* iid, void** pp
 
     return result;
 }
+#endif
 
 static HRESULT STDCALL MemAllocator_SetProperties(IMemAllocator * This,
 						  /* [in] */ ALLOCATOR_PROPERTIES *pRequest,
@@ -228,7 +230,7 @@ static HRESULT STDCALL MemAllocator_GetBuffer(IMemAllocator * This,
 {
     MemAllocator* me = (MemAllocator*)This;
     CMediaSample* sample;
-    Debug printf("MemAllocator_ReleaseBuffer(%p) called   %d  %d\n", This,
+    Debug printf("MemAllocator_GetBuffer(%p) called   %d  %d: ", This,
 		 avm_list_size(me->used_list), avm_list_size(me->free_list));
 
     if (!me->free_list)
@@ -238,6 +240,7 @@ static HRESULT STDCALL MemAllocator_GetBuffer(IMemAllocator * This,
     }
 
     sample = (CMediaSample*) me->free_list->member;
+    Debug printf("0x%p\n", sample);
     me->free_list = avm_list_del_head(me->free_list);
     me->used_list = avm_list_add_tail(me->used_list, sample);
 

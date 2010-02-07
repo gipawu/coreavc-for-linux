@@ -13,7 +13,7 @@
 
 static inline int output_unimplemented(const char* s, void* p)
 {
-    Debug printf("%s(%p) called (UNIMPLEMENTED)", s, p);
+    Debug printf("%s(%p) called (UNIMPLEMENTED)\n", s, p);
     return E_NOTIMPL;
 }
 
@@ -216,18 +216,21 @@ static HRESULT STDCALL COutputPin_QueryInterface(IUnknown* This, const GUID* iid
 {
     COutputPin* p = (COutputPin*) This;
 
-    Debug printf("COutputPin_QueryInterface(%p) called\n", This);
-    if (!ppv)
+    Debug printf("COutputPin_QueryInterface(%p) called: ", This);
+    if (!ppv) {
+	Debug printf("NULL\n");
 	return E_INVALIDARG;
-
+    }
     if (memcmp(iid, &IID_IUnknown, 16) == 0)
     {
+	Debug printf("IID_IUnknown\n");
 	*ppv = p;
 	p->vt->AddRef(This);
         return 0;
     }
     if (memcmp(iid, &IID_IMemInputPin, 16) == 0)
     {
+	Debug printf("IID_IMemInputPin\n");
 	*ppv = p->mempin;
 	p->mempin->vt->AddRef((IUnknown*)*ppv);
 	return 0;
@@ -600,12 +603,14 @@ static HRESULT STDCALL COutputMemPin_QueryInterface(IUnknown* This, const GUID* 
 {
     COutputMemPin* p = (COutputMemPin*)This;
 
-    Debug printf("COutputMemPin_QueryInterface(%p) called\n", This);
-    if (!ppv)
+    Debug printf("COutputMemPin_QueryInterface(%p) called: ", This);
+    if (!ppv) {
+	Debug printf("NULL\n");
 	return E_INVALIDARG;
-
+    }
     if(!memcmp(iid, &IID_IUnknown, 16))
     {
+	Debug printf("IID_IUnknown\n");
 	*ppv = p;
 	p->vt->AddRef(This);
 	return 0;
@@ -619,6 +624,7 @@ static HRESULT STDCALL COutputMemPin_QueryInterface(IUnknown* This, const GUID* 
     }*/
     if(!memcmp(iid, &IID_IMemInputPin, 16))
     {
+	Debug printf("IID_IMemInputPin\n");
 	*ppv = p;
 	p->vt->AddRef(This);
 	return 0;
@@ -734,7 +740,7 @@ static HRESULT STDCALL COutputMemPin_Receive(IMemInputPin* This,
 	return E_INVALIDARG;
 
     if(((COutputMemPin*)This)->parent->SampleProc)
-        return ((COutputMemPin*)This)->parent->SampleProc(((COutputMemPin*)This)->parent->pUserData,pSample);
+	return ((COutputMemPin*)This)->parent->SampleProc(((COutputMemPin*)This)->parent->pUserData,pSample);
     //reject sample
     return S_FALSE;
 }
