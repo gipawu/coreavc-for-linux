@@ -110,7 +110,7 @@ static HRESULT STDCALL DS_Filter_CopySample(void* pUserData,IMediaSample* pSampl
 #ifdef USE_SHARED_MEM
     WaitForSingleObject(page_mutex, INFINITE);
     for(i = pData->lastFrame; 1;) {
-      int j = (pData->lastFrame + 1) % PD_MAX_FRAMES;
+      int j = (i + 1) % PD_MAX_FRAMES;
       if(! pData->frame[i].state) {
         break;
       }
