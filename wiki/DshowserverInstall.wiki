@@ -44,7 +44,7 @@ sudo make install X_COMPILE=1
 }}}
   * Copy CoreAVCCodec.ax from Wine install to dshowserver dir:
 {{{
-sudo cp "~/.wine/drive_c/Program Files/CoreCodec/CoreAVC Professional Edition/CoreAVCDecoder.ax" /usr/local/share/dshowserver
+sudo cp "$HOME/.wine/drive_c/Program Files/CoreCodec/CoreAVC Professional Edition/CoreAVCDecoder.ax" /usr/local/share/dshowserver
 }}}
 
 4) Verify that dshowserver is working
