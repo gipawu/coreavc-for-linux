@@ -1,7 +1,7 @@
 Index: libmpcodecs/vd.c
 ===================================================================
---- libmpcodecs/vd.c.orig	2010-02-27 09:14:03.000000000 -0800
-+++ libmpcodecs/vd.c	2010-02-27 09:15:51.000000000 -0800
+--- libmpcodecs/vd.c.orig	2010-03-12 07:47:10.000000000 -0800
++++ libmpcodecs/vd.c	2010-03-12 07:48:02.000000000 -0800
 @@ -43,6 +43,7 @@
  extern const vd_functions_t mpcodecs_vd_ffmpeg;
  extern const vd_functions_t mpcodecs_vd_theora;
@@ -20,8 +20,8 @@ Index: libmpcodecs/vd.c
          &mpcodecs_vd_dmo,
 Index: Makefile
 ===================================================================
---- Makefile.orig	2010-02-27 09:14:10.000000000 -0800
-+++ Makefile	2010-02-27 09:15:05.000000000 -0800
+--- Makefile.orig	2010-03-12 07:47:19.000000000 -0800
++++ Makefile	2010-03-12 07:48:02.000000000 -0800
 @@ -20,6 +20,7 @@
  # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  
@@ -30,7 +30,7 @@ Index: Makefile
  
  .SUFFIXES:
  
-@@ -527,6 +528,7 @@
+@@ -529,6 +530,7 @@
                stream/stream_mf.c \
                stream/stream_null.c \
                stream/url.c \
@@ -38,7 +38,7 @@ Index: Makefile
                $(SRCS_COMMON-yes)
  
  
-@@ -906,6 +908,7 @@
+@@ -908,6 +910,7 @@
  libdvdnav/%:   CFLAGS := -Ilibdvdnav -D__USE_UNIX98 -D_GNU_SOURCE -DHAVE_CONFIG_H -DVERSION=\"MPlayer-custom\" $(CFLAGS)
  libdvdread4/%: CFLAGS := -Ilibdvdread4 -D__USE_UNIX98 -D_GNU_SOURCE $(CFLAGS_LIBDVDCSS_DVDREAD) $(CFLAGS)
  libfaad2/%:    CFLAGS := -Ilibfaad2 -D_GNU_SOURCE -DHAVE_CONFIG_H $(CFLAGS_FAAD_FIXED) $(CFLAGS)
@@ -49,8 +49,8 @@ Index: Makefile
 Index: libmpcodecs/vd_dshowserver.c
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/vd_dshowserver.c	2010-02-27 09:15:05.000000000 -0800
-@@ -0,0 +1,296 @@
++++ libmpcodecs/vd_dshowserver.c	2010-03-12 07:56:33.000000000 -0800
+@@ -0,0 +1,295 @@
 +/*
 + * Copyright Alan Nisota 2006 - 2010
 + * To use this code, make sureyour codecs.conf file has been updated with this section:
@@ -92,7 +92,6 @@ Index: libmpcodecs/vd_dshowserver.c
 +#include "config.h"
 +
 +#include "mp_msg.h"
-+#include "help_mp.h"
 +
 +#include "vd_internal.h"
 +
@@ -350,7 +349,7 @@ Index: libmpcodecs/vd_dshowserver.c
 Index: libmpcodecs/timeout_sem.c
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/timeout_sem.c	2010-02-27 09:15:05.000000000 -0800
++++ libmpcodecs/timeout_sem.c	2010-03-12 08:03:16.000000000 -0800
 @@ -0,0 +1,397 @@
 +#include <stdio.h>
 +#include <stdlib.h>
@@ -406,16 +405,16 @@ Index: libmpcodecs/timeout_sem.c
 +
 +#ifdef DS_SEMAPHORE
 +#ifdef __APPLE__
-+  void ALRMhandler(int sig) {
++  static void ALRMhandler(int sig) {
 +  }
-+  int sem_twait(sem_t *sem, int t) {
++  static int sem_twait(sem_t *sem, int t) {
 +    int ret;
 +    alarm(t);
 +    ret = sem_wait(sem);
 +    printf("twait complete\n");
 +    return ret;
 +  }
-+  void init_twait() {
++  static void init_twait() {
 +    sigset_t none;
 +    struct sigaction sa;
 +    sigemptyset(&none);
@@ -427,17 +426,17 @@ Index: libmpcodecs/timeout_sem.c
 +    sigaction(SIGALRM, &sa, 0);
 +  }
 +#else
-+  int sem_twait(sem_t *sem, int t) {
++  static int sem_twait(sem_t *sem, int t) {
 +    struct timespec ts;
 +    clock_gettime(CLOCK_REALTIME, &ts);
 +    ts.tv_sec += t;
 +    return(sem_timedwait(sem, &ts));
 +  }
-+  void init_twait() {}
++  static void init_twait() {}
 +#endif
 +#endif /*DS_SEMAPHORE */
 +
-+int setblocking(int sock, int block)
++static int setblocking(int sock, int block)
 +{
 +	unsigned long opts;
 +#ifndef __MINGW32__
@@ -463,7 +462,7 @@ Index: libmpcodecs/timeout_sem.c
 +	return 0;
 +}
 +
-+int timed_connect(int sockfd, const struct sockaddr *serv_addr,
++static int timed_connect(int sockfd, const struct sockaddr *serv_addr,
 +                   socklen_t addrlen, int secs) {
 +  //Socket should already be non-blocking
 +  int res;
@@ -516,7 +515,7 @@ Index: libmpcodecs/timeout_sem.c
 +  // I hope that is all
 +  return 0;
 +}
-+int timed_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int secs) {
++static int timed_accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen, int secs) {
 +  //Socket should already be non-blocking
 +  int res;
 +  fd_set myset;
@@ -538,7 +537,7 @@ Index: libmpcodecs/timeout_sem.c
 +  errno = DS_ETIMEDOUT;
 +  return -1;
 +}
-+int timed_recv(int sockfd, void *buf, size_t len, int flags, int secs) {
++static int timed_recv(int sockfd, void *buf, size_t len, int flags, int secs) {
 +  //Socket should already be non-blocking
 +  int res;
 +  fd_set myset;
@@ -561,7 +560,7 @@ Index: libmpcodecs/timeout_sem.c
 +  return -1;
 +}
 +
-+int timed_sockinit(int *port, int is_server)
++static int timed_sockinit(int *port, int is_server)
 +{
 +    int sockfd;  // listen on sock_fd
 +    struct sockaddr_in my_addr;
@@ -752,7 +751,7 @@ Index: libmpcodecs/timeout_sem.c
 Index: libmpcodecs/timeout_sem.h
 ===================================================================
 --- /dev/null	1970-01-01 00:00:00.000000000 +0000
-+++ libmpcodecs/timeout_sem.h	2010-02-27 09:15:05.000000000 -0800
++++ libmpcodecs/timeout_sem.h	2010-03-12 07:48:02.000000000 -0800
 @@ -0,0 +1,10 @@
 +#define DS_SOCKET 0x01
 +#define DS_SEMAPHORE 0x02
