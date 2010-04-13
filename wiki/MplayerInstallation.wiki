@@ -22,7 +22,6 @@ cd <path to mplayer source code>
 patch -p0 < <path to coreavc-for-linux>/mplayer/dshowserver.patch
 make
 make install
-cp loader/registercodec /usr/local/bin/
 }}}
 
 4) Update codecs.conf
