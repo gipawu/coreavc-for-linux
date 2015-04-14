@@ -1,0 +1,5 @@
+CoreAVC is a proprietary Windows codec for H.264 video decoding.  It is much faster than any currently available open-source codecs.  Being multi-threaded, and able to play PAFF streams, it can handle HD H.264/AVC streams that no freely available codecs can.  CoreAVC is reasonably priced at ~$15, but it is Windows only.
+
+2010-01-03: CoreAVC-for-Linux has been updated to support all versions of CoreAVC from 1.0 through 2.0.  Using Wine is now a requirement for installation and using dshowserver.  The old mplayer based Win32 code is still available but is no longer supported.  Dshowserver should now work on any platform that Wine can run on.
+
+NOTICE: I am direly in need of help.  I no longer have the time to work on this project much, and there is quite a bit to do.  If you think you can meaningfully contribute, please contact me.
